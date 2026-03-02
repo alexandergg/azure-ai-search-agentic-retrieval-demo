@@ -1,0 +1,9 @@
+azure-identity>=1.17.0
+azure-search-documents>=11.7.0b2
+azure-ai-projects>=2.0.0b1
+azure-mgmt-cognitiveservices>=14.0.0
+azure-storage-blob>=12.20.0
+python-dotenv>=1.0.0
+rich>=13.7.0
+requests>=2.31.0
+openai>=1.40.0
