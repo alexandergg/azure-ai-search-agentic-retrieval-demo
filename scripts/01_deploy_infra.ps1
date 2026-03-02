@@ -100,11 +100,13 @@ Write-Ok "Resource group ready"
 # ── 3. Deploy Bicep template ───────────────────────────────────────────────────
 Write-Step "Deploying Bicep template (this may take several minutes)..."
 
-$deploymentOutput = az deployment group create `
+# Use --query to extract outputs directly, avoiding JSON parse issues with stderr
+az deployment group create `
     --resource-group $ResourceGroupName `
+    --name           main `
     --template-file  $InfraPath `
     --parameters     location=$Location namePrefix=$NamePrefix `
-    --output         json 2>&1
+    --output         none
 
 Assert-ExitCode "az deployment group create"
 Write-Ok "Deployment succeeded"
@@ -112,16 +114,18 @@ Write-Ok "Deployment succeeded"
 # ── 4. Extract deployment outputs ──────────────────────────────────────────────
 Write-Step "Extracting deployment outputs"
 
-$deployment = $deploymentOutput | ConvertFrom-Json
-$outputs    = $deployment.properties.outputs
+# Query each output individually to avoid stderr contamination in JSON parsing
+$searchEndpoint          = (az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.searchEndpoint.value -o tsv).Trim()
+$openAiEndpoint          = (az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.openAiEndpoint.value -o tsv).Trim()
+$storageConnectionString = (az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.storageConnectionString.value -o tsv).Trim()
+$projectEndpoint         = (az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.projectEndpoint.value -o tsv).Trim()
+$projectResourceId       = (az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.projectResourceId.value -o tsv).Trim()
+$searchServiceName       = (az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.searchServiceName.value -o tsv).Trim()
 
-$searchEndpoint          = $outputs.searchEndpoint.value
-$openAiEndpoint          = $outputs.openAiEndpoint.value
-$storageConnectionString = $outputs.storageConnectionString.value
-$projectEndpoint         = $outputs.projectEndpoint.value
-$projectResourceId       = $outputs.projectResourceId.value
-$aiServicesEndpoint      = $outputs.aiServicesEndpoint.value
-$searchServiceResourceId = $outputs.searchServiceResourceId.value
+# Derive resource IDs from known values
+$subscriptionId          = (az account show --query id -o tsv).Trim()
+$searchServiceResourceId = "/subscriptions/$subscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Search/searchServices/$searchServiceName"
+$aiServicesEndpoint      = $openAiEndpoint  # AI Services shares the OpenAI endpoint in this deployment
 
 Write-Ok "Outputs extracted"
 
@@ -218,6 +222,7 @@ Write-Host ""
 Write-Host "  Next steps:" -ForegroundColor Yellow
 Write-Host "    1. pip install -r requirements.txt" -ForegroundColor White
 Write-Host "    2. python scripts\02_upload_documents.py" -ForegroundColor White
-Write-Host "    3. python scripts\03_create_index.py" -ForegroundColor White
+Write-Host "    3. python scripts\03_create_knowledge.py" -ForegroundColor White
+Write-Host "    4. python scripts\04_create_agent.py" -ForegroundColor White
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
