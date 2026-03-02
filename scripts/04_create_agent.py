@@ -115,7 +115,7 @@ def create_agent(
     console.print(f"  Allowed tools:   [dim]knowledge_base_retrieve[/dim]")
 
     mcp_tool = McpTool(
-        server_label="knowledge-base",
+        server_label="knowledge_base",
         server_url=mcp_endpoint,
         allowed_tools=["knowledge_base_retrieve"],
     )
