@@ -92,6 +92,28 @@ module aiFoundry 'modules/ai-foundry.bicep' = {
   }
 }
 
+// ── RBAC: Foundry Project MI → Search (Search Index Data Reader) ──
+resource foundryProjectToSearchReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, namePrefix, 'foundry-search-datareader')
+  scope: resourceGroup()
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '1407120a-92aa-4202-b7e9-c0e197c71c8f') // Search Index Data Reader
+    principalId: aiServices.outputs.foundryProjectPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// ── RBAC: Foundry Project MI → Search (Search Service Contributor, for KB MCP) ──
+resource foundryProjectToSearchContrib 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, namePrefix, 'foundry-search-contrib')
+  scope: resourceGroup()
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7ca78c08-252a-4471-8644-bb5ff32d4ba0') // Search Service Contributor
+    principalId: aiServices.outputs.foundryProjectPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 // ── Outputs ──
 output storageAccountName string = storage.outputs.storageAccountName
 output storageConnectionString string = storage.outputs.connectionString
@@ -107,3 +129,6 @@ output projectResourceId string = aiFoundry.outputs.projectId
 output projectEndpoint string = aiFoundry.outputs.projectEndpoint
 output aiServicesName string = aiServices.outputs.aiServicesName
 output aiServicesEndpoint string = aiServices.outputs.aiServicesEndpoint
+output foundryProjectName string = aiServices.outputs.foundryProjectName
+output foundryProjectEndpoint string = aiServices.outputs.foundryProjectEndpoint
+output foundryProjectResourceId string = aiServices.outputs.foundryProjectResourceId

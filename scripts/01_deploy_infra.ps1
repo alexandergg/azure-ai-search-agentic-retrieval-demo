@@ -122,6 +122,8 @@ $projectEndpoint         = "$(az deployment group show --resource-group $Resourc
 $projectResourceId       = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.projectResourceId.value -o tsv 2>$null)".Trim()
 $searchServiceName       = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.searchServiceName.value -o tsv 2>$null)".Trim()
 $aiServicesEndpoint      = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.aiServicesEndpoint.value -o tsv 2>$null)".Trim()
+$foundryProjectEndpoint  = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.foundryProjectEndpoint.value -o tsv 2>$null)".Trim()
+$foundryProjectResourceId = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.foundryProjectResourceId.value -o tsv 2>$null)".Trim()
 
 # Get Search admin API key (needed for MCP tool auth)
 $searchApiKey = "$(az search admin-key show --resource-group $ResourceGroupName --service-name $searchServiceName --query primaryKey -o tsv 2>$null)".Trim()
@@ -135,9 +137,13 @@ $envContent = @"
 # Azure AI Search
 AZURE_SEARCH_ENDPOINT=$searchEndpoint
 
-# Azure AI Foundry Project
+# Azure AI Foundry Project (ML Workspace — legacy, used by AgentsClient)
 PROJECT_ENDPOINT=$projectEndpoint
 PROJECT_RESOURCE_ID=$projectResourceId
+
+# Azure AI Foundry Project (CognitiveServices — for AIProjectClient + MCP)
+FOUNDRY_PROJECT_ENDPOINT=$foundryProjectEndpoint
+FOUNDRY_PROJECT_RESOURCE_ID=$foundryProjectResourceId
 
 # Azure OpenAI
 AZURE_OPENAI_ENDPOINT=$openAiEndpoint
@@ -150,7 +156,7 @@ AZURE_OPENAI_GPT_MINI_DEPLOYMENT=gpt-4o-mini
 AZURE_STORAGE_CONNECTION_STRING=$storageConnectionString
 AZURE_STORAGE_CONTAINER_NAME=documents
 
-# Azure AI Search API Key (for Agent MCP tool auth)
+# Azure AI Search API Key (for legacy auth)
 AZURE_SEARCH_API_KEY=$searchApiKey
 
 # Azure AI Services (for Content Understanding)
@@ -212,7 +218,7 @@ Write-Step "Assigning RBAC roles to project managed identity"
 
 $projectMiId = "$(az resource show --ids $projectResourceId --query identity.principalId -o tsv 2>$null)".Trim()
 if (-not [string]::IsNullOrWhiteSpace($projectMiId)) {
-    Write-Ok "Project MI: $projectMiId"
+    Write-Ok "ML Project MI: $projectMiId"
     $rgScope = "/subscriptions/$(az account show --query id -o tsv 2>$null)/resourceGroups/$ResourceGroupName"
 
     $miRoles = @(
@@ -224,7 +230,7 @@ if (-not [string]::IsNullOrWhiteSpace($projectMiId)) {
 
     foreach ($ra in $miRoles) {
         try {
-            Write-Host "  Assigning '$($ra.Role)' to project MI..." -ForegroundColor Gray
+            Write-Host "  Assigning '$($ra.Role)' to ML project MI..." -ForegroundColor Gray
             $null = az role assignment create `
                 --assignee-object-id   $projectMiId `
                 --assignee-principal-type ServicePrincipal `
@@ -233,9 +239,61 @@ if (-not [string]::IsNullOrWhiteSpace($projectMiId)) {
                 --output               none 2>$null
         } catch {}
     }
-    Write-Ok "Project MI roles assigned"
+    Write-Ok "ML Project MI roles assigned"
 } else {
 }
+
+# ── 6c. Assign RBAC for Foundry (CognitiveServices) project MI ───────────────
+Write-Step "Assigning RBAC roles to Foundry project managed identity"
+
+$foundryProjectMiId = "$(az resource show --ids $foundryProjectResourceId --query identity.principalId -o tsv 2>$null)".Trim()
+if (-not [string]::IsNullOrWhiteSpace($foundryProjectMiId)) {
+    Write-Ok "Foundry Project MI: $foundryProjectMiId"
+    $rgScope = "/subscriptions/$(az account show --query id -o tsv 2>$null)/resourceGroups/$ResourceGroupName"
+
+    $foundryMiRoles = @(
+        @{ Role = "Search Index Data Reader";    Scope = $rgScope }
+        @{ Role = "Search Service Contributor";  Scope = $rgScope }
+        @{ Role = "Cognitive Services User";     Scope = $rgScope }
+    )
+
+    foreach ($ra in $foundryMiRoles) {
+        try {
+            Write-Host "  Assigning '$($ra.Role)' to Foundry project MI..." -ForegroundColor Gray
+            $null = az role assignment create `
+                --assignee-object-id   $foundryProjectMiId `
+                --assignee-principal-type ServicePrincipal `
+                --role                 $ra.Role `
+                --scope                $ra.Scope `
+                --output               none 2>$null
+        } catch {}
+    }
+    Write-Ok "Foundry Project MI roles assigned"
+} else {
+    Write-Warn "Could not get Foundry project MI — RBAC not assigned"
+}
+
+# ── 6d. Assign RBAC for current user on AI Services ──────────────────────────
+Write-Step "Assigning AI Services roles to current user"
+
+$rgScope = "/subscriptions/$(az account show --query id -o tsv 2>$null)/resourceGroups/$ResourceGroupName"
+$userAiRoles = @(
+    @{ Role = "Azure AI User";            Scope = $rgScope }
+    @{ Role = "Azure AI Project Manager"; Scope = $rgScope }
+)
+
+foreach ($ra in $userAiRoles) {
+    try {
+        Write-Host "  Assigning '$($ra.Role)' to current user..." -ForegroundColor Gray
+        $null = az role assignment create `
+            --assignee-object-id   $currentUserObjectId `
+            --assignee-principal-type User `
+            --role                 $ra.Role `
+            --scope                $ra.Scope `
+            --output               none 2>$null
+    } catch {}
+}
+Write-Ok "AI Services user roles assigned"
 
 # ── 7. Summary ──────────────────────────────────────────────────────────────────Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
@@ -247,7 +305,7 @@ Write-Host "  Location:              $Location" -ForegroundColor White
 Write-Host "  Search Endpoint:       $searchEndpoint" -ForegroundColor White
 Write-Host "  OpenAI Endpoint:       $openAiEndpoint" -ForegroundColor White
 Write-Host "  AI Services Endpoint:  $aiServicesEndpoint" -ForegroundColor White
-Write-Host "  Project Endpoint:      $projectEndpoint" -ForegroundColor White
+Write-Host "  Foundry Project:       $foundryProjectEndpoint" -ForegroundColor White
 Write-Host "  .env File:             $EnvFilePath" -ForegroundColor White
 Write-Host ""
 Write-Host "  Next steps:" -ForegroundColor Yellow

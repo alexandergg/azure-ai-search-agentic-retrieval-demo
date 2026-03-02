@@ -20,7 +20,7 @@ from azure.search.documents.indexes.models import (
     AzureOpenAIVectorizerParameters,
     KnowledgeBase,
     KnowledgeBaseAzureOpenAIModel,
-    KnowledgeRetrievalLowReasoningEffort,
+    KnowledgeRetrievalMinimalReasoningEffort,
     KnowledgeRetrievalOutputMode,
     KnowledgeSourceAzureOpenAIVectorizer,
     KnowledgeSourceIngestionParameters,
@@ -403,8 +403,8 @@ def create_knowledge_base(
                 azure_open_ai_parameters=chat_params
             )
         ],
-        retrieval_reasoning_effort=KnowledgeRetrievalLowReasoningEffort(),
-        output_mode=KnowledgeRetrievalOutputMode.ANSWER_SYNTHESIS,
+        retrieval_reasoning_effort=KnowledgeRetrievalMinimalReasoningEffort(),
+        output_mode=KnowledgeRetrievalOutputMode.EXTRACTIVE_DATA,
         description="Foundry IQ demo — agentic retrieval over ingested documents",
         retrieval_instructions=(
             "Use the knowledge source to answer questions about the documents. "

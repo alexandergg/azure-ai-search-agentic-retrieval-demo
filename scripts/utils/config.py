@@ -57,6 +57,13 @@ def load_config() -> dict:
     config["AZURE_AI_SERVICES_ENDPOINT"] = os.getenv(
         "AZURE_AI_SERVICES_ENDPOINT", ""
     )
+    # Foundry project (CognitiveServices-based, for agent + MCP)
+    config["FOUNDRY_PROJECT_ENDPOINT"] = os.getenv(
+        "FOUNDRY_PROJECT_ENDPOINT", ""
+    )
+    config["FOUNDRY_PROJECT_RESOURCE_ID"] = os.getenv(
+        "FOUNDRY_PROJECT_RESOURCE_ID", ""
+    )
     config["AGENT_MODEL"] = os.getenv("AGENT_MODEL", "gpt-4o")
     config["KNOWLEDGE_SOURCE_NAME"] = os.getenv(
         "KNOWLEDGE_SOURCE_NAME", "demo-blob-ks"
