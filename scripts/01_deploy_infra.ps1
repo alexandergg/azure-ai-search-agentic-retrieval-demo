@@ -114,16 +114,16 @@ Write-Ok "Deployment succeeded"
 # ── 4. Extract deployment outputs ──────────────────────────────────────────────
 Write-Step "Extracting deployment outputs"
 
-# Query each output individually to avoid stderr contamination in JSON parsing
-$searchEndpoint          = (az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.searchEndpoint.value -o tsv).Trim()
-$openAiEndpoint          = (az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.openAiEndpoint.value -o tsv).Trim()
-$storageConnectionString = (az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.storageConnectionString.value -o tsv).Trim()
-$projectEndpoint         = (az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.projectEndpoint.value -o tsv).Trim()
-$projectResourceId       = (az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.projectResourceId.value -o tsv).Trim()
-$searchServiceName       = (az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.searchServiceName.value -o tsv).Trim()
+# Query each output individually, suppressing stderr to avoid AutoRun noise
+$searchEndpoint          = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.searchEndpoint.value -o tsv 2>$null)".Trim()
+$openAiEndpoint          = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.openAiEndpoint.value -o tsv 2>$null)".Trim()
+$storageConnectionString = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.storageConnectionString.value -o tsv 2>$null)".Trim()
+$projectEndpoint         = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.projectEndpoint.value -o tsv 2>$null)".Trim()
+$projectResourceId       = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.projectResourceId.value -o tsv 2>$null)".Trim()
+$searchServiceName       = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.searchServiceName.value -o tsv 2>$null)".Trim()
 
 # Derive resource IDs from known values
-$subscriptionId          = (az account show --query id -o tsv).Trim()
+$subscriptionId          = "$(az account show --query id -o tsv 2>$null)".Trim()
 $searchServiceResourceId = "/subscriptions/$subscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Search/searchServices/$searchServiceName"
 $aiServicesEndpoint      = $openAiEndpoint  # AI Services shares the OpenAI endpoint in this deployment
 
@@ -166,9 +166,9 @@ Write-Ok ".env file written"
 # ── 6. Assign RBAC roles ───────────────────────────────────────────────────────
 Write-Step "Assigning RBAC roles to current user"
 
-$currentUserObjectId = az ad signed-in-user show --query id -o tsv 2>&1
+$currentUserObjectId = (az ad signed-in-user show --query id -o tsv 2>$null)
 Assert-ExitCode "az ad signed-in-user show"
-$currentUserObjectId = $currentUserObjectId.Trim()
+$currentUserObjectId = "$currentUserObjectId".Trim()
 Write-Ok "Current user object ID: $currentUserObjectId"
 
 $roleAssignments = @(
@@ -193,7 +193,7 @@ foreach ($ra in $roleAssignments) {
             --assignee-principal-type User `
             --role                 $roleName `
             --scope                $roleScope `
-            --output               none 2>&1
+            --output               none 2>$null
 
         if ($LASTEXITCODE -ne 0) {
             Write-Warn "'$roleName' — may already be assigned (non-zero exit)"
