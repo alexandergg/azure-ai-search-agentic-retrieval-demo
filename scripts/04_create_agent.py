@@ -1,4 +1,4 @@
-"""Create an AI Agent with MCP tool for agentic retrieval and run interactive chat."""
+"""Create an AI Agent with Azure AI Search tool and run interactive chat."""
 
 # NOTE: This script uses azure-ai-agents >= 1.2.0b6 preview SDK.
 # API names may change in future releases.
@@ -10,7 +10,11 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from azure.identity import DefaultAzureCredential
 from azure.ai.agents import AgentsClient
-from azure.ai.agents.models import McpTool, MessageRole
+from azure.ai.agents.models import (
+    AzureAISearchTool,
+    AzureAISearchQueryType,
+    MessageRole,
+)
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -26,34 +30,36 @@ SYSTEM_INSTRUCTIONS = (
     "If the knowledge base does not contain relevant information, say so clearly."
 )
 
-
-def build_mcp_endpoint(config: dict) -> str:
-    """Build the MCP endpoint URL for the knowledge base."""
-    search_endpoint = config["AZURE_SEARCH_ENDPOINT"].rstrip("/")
-    kb_name = config["KNOWLEDGE_BASE_NAME"]
-    return f"{search_endpoint}/knowledgebases/{kb_name}/mcp"
+# Hub connection ARM ID for Azure AI Search
+SEARCH_CONNECTION_ID = (
+    "/subscriptions/4e170c4b-6b99-41df-824b-bd9128c35efa/resourceGroups/rg-demo-foundry-iq"
+    "/providers/Microsoft.MachineLearningServices/workspaces/demofiq-hub"
+    "/connections/demofiq-search-connection"
+)
 
 
 def create_agent(agents_client: AgentsClient, config: dict) -> object:
-    """Create a Foundry agent with MCP tool for agentic retrieval."""
-    mcp_endpoint = build_mcp_endpoint(config)
+    """Create a Foundry agent with Azure AI Search tool."""
     model = config.get("AGENT_MODEL", "gpt-4o")
+    index_name = config.get("KNOWLEDGE_SOURCE_NAME", "demo-blob-ks") + "-index"
 
-    console.print(f"MCP Endpoint: [dim]{mcp_endpoint}[/dim]")
-    console.print(f"Agent Model:  [cyan]{model}[/cyan]")
+    console.print(f"Search Connection: [dim]{SEARCH_CONNECTION_ID.split('/')[-1]}[/dim]")
+    console.print(f"Index Name:        [dim]{index_name}[/dim]")
+    console.print(f"Agent Model:       [cyan]{model}[/cyan]")
 
-    mcp_tool = McpTool(
-        server_label="knowledge_base",
-        server_url=mcp_endpoint,
-        allowed_tools=["search"],
+    search_tool = AzureAISearchTool(
+        index_connection_id=SEARCH_CONNECTION_ID,
+        index_name=index_name,
+        query_type=AzureAISearchQueryType.SEMANTIC,
+        top_k=10,
     )
 
     agent = agents_client.create_agent(
         model=model,
         name="Foundry IQ Demo Agent",
         instructions=SYSTEM_INSTRUCTIONS,
-        tools=mcp_tool.definitions,
-        tool_resources=mcp_tool.resources,
+        tools=search_tool.definitions,
+        tool_resources=search_tool.resources,
     )
 
     console.print(f"[green]Agent created:[/green] {agent.id}")

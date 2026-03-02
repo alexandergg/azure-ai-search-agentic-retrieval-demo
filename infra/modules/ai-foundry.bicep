@@ -92,4 +92,4 @@ resource project 'Microsoft.MachineLearningServices/workspaces@2024-10-01' = {
 output hubName string = hub.name
 output projectName string = project.name
 output projectId string = project.id
-output projectEndpoint string = project.properties.discoveryUrl
+output projectEndpoint string = project.properties.agentsEndpointUri

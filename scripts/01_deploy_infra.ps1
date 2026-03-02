@@ -123,6 +123,9 @@ $projectResourceId       = "$(az deployment group show --resource-group $Resourc
 $searchServiceName       = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.searchServiceName.value -o tsv 2>$null)".Trim()
 $aiServicesEndpoint      = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.aiServicesEndpoint.value -o tsv 2>$null)".Trim()
 
+# Get Search admin API key (needed for MCP tool auth)
+$searchApiKey = "$(az search admin-key show --resource-group $ResourceGroupName --service-name $searchServiceName --query primaryKey -o tsv 2>$null)".Trim()
+
 Write-Ok "Outputs extracted"
 
 # ── 5. Generate .env file ──────────────────────────────────────────────────────
@@ -146,6 +149,9 @@ AZURE_OPENAI_GPT_MINI_DEPLOYMENT=gpt-4o-mini
 # Azure Storage
 AZURE_STORAGE_CONNECTION_STRING=$storageConnectionString
 AZURE_STORAGE_CONTAINER_NAME=documents
+
+# Azure AI Search API Key (for Agent MCP tool auth)
+AZURE_SEARCH_API_KEY=$searchApiKey
 
 # Azure AI Services (for Content Understanding)
 AZURE_AI_SERVICES_ENDPOINT=$aiServicesEndpoint
@@ -201,8 +207,37 @@ foreach ($ra in $roleAssignments) {
     }
 }
 
-# ── 7. Summary ──────────────────────────────────────────────────────────────────
-Write-Host ""
+# ── 6b. Assign RBAC roles to AI Foundry project managed identity ─────────────
+Write-Step "Assigning RBAC roles to project managed identity"
+
+$projectMiId = "$(az resource show --ids $projectResourceId --query identity.principalId -o tsv 2>$null)".Trim()
+if (-not [string]::IsNullOrWhiteSpace($projectMiId)) {
+    Write-Ok "Project MI: $projectMiId"
+    $rgScope = "/subscriptions/$(az account show --query id -o tsv 2>$null)/resourceGroups/$ResourceGroupName"
+
+    $miRoles = @(
+        @{ Role = "Cognitive Services OpenAI Contributor"; Scope = $rgScope }
+        @{ Role = "Azure AI Developer";                    Scope = $rgScope }
+        @{ Role = "Search Index Data Reader";              Scope = $rgScope }
+        @{ Role = "Search Service Contributor";            Scope = $rgScope }
+    )
+
+    foreach ($ra in $miRoles) {
+        try {
+            Write-Host "  Assigning '$($ra.Role)' to project MI..." -ForegroundColor Gray
+            $null = az role assignment create `
+                --assignee-object-id   $projectMiId `
+                --assignee-principal-type ServicePrincipal `
+                --role                 $ra.Role `
+                --scope                $ra.Scope `
+                --output               none 2>$null
+        } catch {}
+    }
+    Write-Ok "Project MI roles assigned"
+} else {
+}
+
+# ── 7. Summary ──────────────────────────────────────────────────────────────────Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host "  Deployment Complete" -ForegroundColor Green
 Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan

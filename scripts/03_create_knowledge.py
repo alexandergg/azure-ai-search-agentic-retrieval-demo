@@ -63,7 +63,7 @@ def dump_obj(label: str, obj: object) -> None:
 
 
 def create_knowledge_source(
-    index_client: SearchIndexClient, config: dict
+    index_client: SearchIndexClient, config: dict, extraction_mode: str = "minimal"
 ) -> str:
     """Create an Azure Blob Knowledge Source for agentic retrieval."""
     ks_name = config["KNOWLEDGE_SOURCE_NAME"]
@@ -74,9 +74,10 @@ def create_knowledge_source(
         console.print("[red]Error:[/red] AZURE_STORAGE_CONNECTION_STRING is not set.")
         sys.exit(1)
 
+    mode_label = "standard (Content Understanding — OCR, layout, semantic chunking)" if extraction_mode == "standard" else "minimal (built-in text extraction)"
     console.print(f"\n[bold]Step 1 · Create Knowledge Source[/bold] [cyan]{ks_name}[/cyan]")
     console.print(f"  Container:           [dim]{container_name}[/dim]")
-    console.print(f"  Extraction mode:     [dim]standard (Content Understanding)[/dim]")
+    console.print(f"  Extraction mode:     [dim]{mode_label}[/dim]")
 
     # Embedding model parameters (text-embedding-3-large)
     embedding_params = AzureOpenAIVectorizerParameters(
@@ -94,24 +95,31 @@ def create_knowledge_source(
     )
     console.print(f"  Chat model:          [dim]{config['AZURE_OPENAI_GPT_MINI_DEPLOYMENT']}[/dim]")
 
-    # AI Services for Content Understanding
-    ai_services_endpoint = config.get("AZURE_AI_SERVICES_ENDPOINT", "")
-    if not ai_services_endpoint:
-        console.print("[red]Error:[/red] AZURE_AI_SERVICES_ENDPOINT is not set.")
-        sys.exit(1)
-    console.print(f"  AI Services:         [dim]{ai_services_endpoint}[/dim]")
-
-    ingestion_params = KnowledgeSourceIngestionParameters(
-        disable_image_verbalization=False,
-        content_extraction_mode="standard",
+    # Build ingestion parameters
+    ingestion_kwargs = dict(
+        content_extraction_mode=extraction_mode,
         embedding_model=KnowledgeSourceAzureOpenAIVectorizer(
             azure_open_ai_parameters=embedding_params
         ),
-        chat_completion_model=KnowledgeBaseAzureOpenAIModel(
-            azure_open_ai_parameters=chat_params
-        ),
-        ai_services=AIServices(uri=ai_services_endpoint),
     )
+
+    if extraction_mode == "standard":
+        # Standard mode: CU with image verbalization + AI Services
+        ingestion_kwargs["disable_image_verbalization"] = False
+        ingestion_kwargs["chat_completion_model"] = KnowledgeBaseAzureOpenAIModel(
+            azure_open_ai_parameters=chat_params
+        )
+        ai_services_endpoint = config.get("AZURE_AI_SERVICES_ENDPOINT", "")
+        if not ai_services_endpoint:
+            console.print("[red]Error:[/red] AZURE_AI_SERVICES_ENDPOINT is required for 'standard' mode.")
+            sys.exit(1)
+        console.print(f"  AI Services:         [dim]{ai_services_endpoint}[/dim]")
+        ingestion_kwargs["ai_services"] = AIServices(uri=ai_services_endpoint)
+    else:
+        # Minimal mode: no image verbalization, no chat model needed
+        ingestion_kwargs["disable_image_verbalization"] = True
+
+    ingestion_params = KnowledgeSourceIngestionParameters(**ingestion_kwargs)
 
     blob_params = AzureBlobKnowledgeSourceParameters(
         connection_string=connection_string,
@@ -304,14 +312,23 @@ def poll_ingestion_status(
         if sync_status.lower() in ("completed", "succeeded", "failed", "stopped"):
             ingestion_done = True
 
-        # Also check indexer: if last run succeeded and items were processed, we're done
+        # Also check indexer: if last run succeeded with items, or if it completed
+        # at least one successful run (items may reset between runs)
         try:
             for iname in indexer_client.get_indexer_names():
                 ist = indexer_client.get_indexer_status(iname).as_dict()
                 lr = ist.get("last_result", {}) or {}
                 lr_status = lr.get("status", "")
                 lr_items = lr.get("items_processed", 0)
-                if lr_status in ("success", "transientFailure") and lr_items > 0:
+                exec_hist = ist.get("execution_history", []) or []
+                # Check if ANY completed run processed items
+                any_items = lr_items > 0
+                if not any_items:
+                    for run in exec_hist:
+                        if run.get("status") in ("success", "transientFailure") and (run.get("items_processed", 0) or 0) > 0:
+                            any_items = True
+                            break
+                if lr_status in ("success",) and any_items:
                     ingestion_done = True
                     break
         except Exception:
@@ -331,10 +348,15 @@ def poll_ingestion_status(
             try:
                 for idx_name in index_client.list_index_names():
                     idx_stats = index_client.get_index_statistics(idx_name)
+                    if isinstance(idx_stats, dict):
+                        doc_count = idx_stats.get("document_count", "?")
+                        storage = idx_stats.get("storage_size", 0) / 1024 / 1024
+                    else:
+                        doc_count = getattr(idx_stats, "document_count", "?")
+                        storage = getattr(idx_stats, "storage_size", 0) / 1024 / 1024
                     console.print(
                         f"    Index [cyan]{idx_name}[/cyan]: "
-                        f"{getattr(idx_stats, 'document_count', '?')} documents, "
-                        f"{getattr(idx_stats, 'storage_size', 0) / 1024 / 1024:.1f} MB"
+                        f"{doc_count} documents, {storage:.1f} MB"
                     )
             except Exception:
                 pass
@@ -395,6 +417,10 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Create Knowledge Source & Base for agentic retrieval")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose/debug logging (SDK HTTP traces)")
+    parser.add_argument(
+        "--mode", choices=["minimal", "standard"], default="minimal",
+        help="Content extraction mode: 'minimal' (fast, built-in text extraction) or 'standard' (Content Understanding with OCR, layout analysis, semantic chunking). Default: minimal",
+    )
     args = parser.parse_args()
 
     set_verbose(args.verbose)
@@ -415,7 +441,7 @@ def main() -> None:
         sys.exit(1)
 
     # Step 1: Create knowledge source
-    ks_name = create_knowledge_source(index_client, config)
+    ks_name = create_knowledge_source(index_client, config, extraction_mode=args.mode)
 
     # Step 2: Poll ingestion until complete
     poll_ingestion_status(index_client, indexer_client, ks_name)

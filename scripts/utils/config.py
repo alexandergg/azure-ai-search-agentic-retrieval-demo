@@ -64,5 +64,8 @@ def load_config() -> dict:
     config["KNOWLEDGE_BASE_NAME"] = os.getenv(
         "KNOWLEDGE_BASE_NAME", "demo-knowledge-base"
     )
+    config["AZURE_SEARCH_API_KEY"] = os.getenv(
+        "AZURE_SEARCH_API_KEY", ""
+    )
 
     return config
