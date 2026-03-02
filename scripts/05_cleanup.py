@@ -1,9 +1,11 @@
-"""Clean up all demo resources: blobs, knowledge bases/sources, indexes, indexers, skillsets, data sources."""
+"""Clean up all demo resources: blobs, knowledge bases/sources, indexes, indexers, skillsets, data sources, MCP connections."""
 
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
+
+import requests as http_requests
 
 from azure.identity import DefaultAzureCredential
 from azure.search.documents.indexes import SearchIndexClient, SearchIndexerClient
@@ -14,6 +16,8 @@ from rich.prompt import Confirm
 from utils.config import load_config
 
 console = Console()
+
+MCP_CONNECTION_NAME = "demofiq-kb-mcp-connection"
 
 
 def cleanup_knowledge_bases(index_client: SearchIndexClient) -> int:
@@ -118,6 +122,32 @@ def cleanup_blobs(config: dict) -> int:
     return count
 
 
+def cleanup_mcp_connection(config: dict, credential: DefaultAzureCredential) -> int:
+    """Delete the RemoteTool project connection for MCP."""
+    project_resource_id = config.get("PROJECT_RESOURCE_ID", "")
+    if not project_resource_id:
+        return 0
+
+    count = 0
+    try:
+        token = credential.get_token("https://management.azure.com/.default").token
+        url = (
+            f"https://management.azure.com{project_resource_id}"
+            f"/connections/{MCP_CONNECTION_NAME}?api-version=2025-10-01-preview"
+        )
+        resp = http_requests.delete(url, headers={"Authorization": f"Bearer {token}"})
+        if resp.status_code in (200, 204):
+            console.print(f"  [red]✗[/red] MCP Connection: {MCP_CONNECTION_NAME}")
+            count = 1
+        elif resp.status_code == 404:
+            console.print(f"  [dim]MCP Connection not found (already deleted)[/dim]")
+        else:
+            console.print(f"  [yellow]Warning:[/yellow] MCP connection delete returned {resp.status_code}")
+    except Exception as e:
+        console.print(f"  [yellow]Warning:[/yellow] {e}")
+    return count
+
+
 def main() -> None:
     console.print("[bold]Azure AI Search + Storage — Full Cleanup[/bold]\n")
 
@@ -147,6 +177,21 @@ def main() -> None:
         except Exception:
             pass
 
+    # Check for MCP connection
+    mcp_conn_exists = False
+    project_resource_id = config.get("PROJECT_RESOURCE_ID", "")
+    if project_resource_id:
+        try:
+            token = credential.get_token("https://management.azure.com/.default").token
+            url = (
+                f"https://management.azure.com{project_resource_id}"
+                f"/connections/{MCP_CONNECTION_NAME}?api-version=2025-10-01-preview"
+            )
+            resp = http_requests.get(url, headers={"Authorization": f"Bearer {token}"})
+            mcp_conn_exists = resp.status_code == 200
+        except Exception:
+            pass
+
     console.print(f"  Knowledge Bases:   [cyan]{len(kb_list)}[/cyan]")
     console.print(f"  Knowledge Sources: [cyan]{len(ks_list)}[/cyan]")
     console.print(f"  Indexers:          [cyan]{len(indexer_names)}[/cyan]")
@@ -154,8 +199,9 @@ def main() -> None:
     console.print(f"  Data Sources:      [cyan]{len(ds_names)}[/cyan]")
     console.print(f"  Indexes:           [cyan]{len(index_names)}[/cyan]")
     console.print(f"  Blobs:             [cyan]{blob_count}[/cyan]")
+    console.print(f"  MCP Connection:    [cyan]{'1' if mcp_conn_exists else '0'}[/cyan]")
 
-    total = len(kb_list) + len(ks_list) + len(indexer_names) + len(skillset_names) + len(ds_names) + len(index_names) + blob_count
+    total = len(kb_list) + len(ks_list) + len(indexer_names) + len(skillset_names) + len(ds_names) + len(index_names) + blob_count + (1 if mcp_conn_exists else 0)
     if total == 0:
         console.print("\n[green]Nothing to clean up — all clear![/green]")
         return
@@ -189,6 +235,9 @@ def main() -> None:
 
     console.print("[bold]Deleting Blobs...[/bold]")
     deleted += cleanup_blobs(config)
+
+    console.print("[bold]Deleting MCP Connection...[/bold]")
+    deleted += cleanup_mcp_connection(config, credential)
 
     console.print(f"\n[bold green]Cleanup complete![/bold green] {deleted} resources deleted.")
 

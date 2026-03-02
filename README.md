@@ -89,10 +89,17 @@ Uploads all PDFs from `data/sample-docs/` to the Azure Blob Storage container.
 ### 6. Create Knowledge Source and Knowledge Base
 
 ```bash
+# Default: standard mode (Content Understanding with OCR, layout analysis)
 python scripts/03_create_knowledge.py
+
+# For faster testing: minimal mode (built-in text extraction)
+python scripts/03_create_knowledge.py --mode minimal
+
+# With verbose SDK logging:
+python scripts/03_create_knowledge.py -v
 ```
 
-Creates an Azure AI Search index with Content Understanding chunking, registers it as a Knowledge Source, and wraps it in a Knowledge Base for agentic retrieval.
+Creates an Azure AI Search index with Content Understanding chunking, registers it as a Knowledge Source, and wraps it in a Knowledge Base with agentic retrieval features (LLM query planning, answer synthesis, retrieval instructions).
 
 ### 7. Chat with the agent
 
@@ -100,7 +107,17 @@ Creates an Azure AI Search index with Content Understanding chunking, registers 
 python scripts/04_create_agent.py
 ```
 
-Creates a Foundry Agent connected to the knowledge base via MCP and starts an interactive chat session. Ask questions about your documents!
+Creates a RemoteTool project connection for secure MCP authentication, then creates a Foundry Agent that uses `knowledge_base_retrieve` via MCP. Starts an interactive chat session with agentic retrieval (query decomposition → parallel subqueries → semantic reranking → unified response with citations).
+
+### 8. Cleanup (optional)
+
+```bash
+# Clean up AI Search resources, blobs, and MCP connections
+python scripts/05_cleanup.py
+
+# Or delete the entire resource group
+az group delete --name rg-demo-foundry-iq --yes --no-wait
+```
 
 ## How It Works
 
@@ -123,11 +140,13 @@ Unlike simple vector search, agentic retrieval uses an LLM-powered query planner
 
 ### MCP Integration
 
-The Foundry Agent connects to the Knowledge Base via [Model Context Protocol (MCP)](https://modelcontextprotocol.io/). MCP provides a standardized interface that allows the agent to:
+The Foundry Agent connects to the Knowledge Base via [Model Context Protocol (MCP)](https://modelcontextprotocol.io/). The integration uses:
 
-- Discover available knowledge bases and their capabilities
-- Issue structured retrieval queries
-- Receive typed responses with metadata and citations
+1. **RemoteTool Project Connection** — A connection on the AI Foundry project with `ProjectManagedIdentity` auth type. This tells the Agent Service to acquire tokens for `https://search.azure.com/` using the project's managed identity.
+2. **MCP Tool** — The agent is configured with an MCP tool pointing to `{search_endpoint}/knowledgebases/{kb_name}/mcp?api-version=2025-11-01-preview`
+3. **`knowledge_base_retrieve`** — The allowed tool that the agent calls to perform agentic retrieval, which internally does LLM-powered query planning, parallel subquery execution, and semantic reranking.
+
+This architecture ensures secure, token-based authentication without exposing API keys — the project MI handles all auth transparently.
 
 ## Project Structure
 
@@ -147,7 +166,8 @@ demo-foundry-iq/
     ├── 01_deploy_infra.ps1    # Provisions Azure infrastructure
     ├── 02_upload_documents.py # Uploads PDFs to Blob Storage
     ├── 03_create_knowledge.py # Creates knowledge source + base
-    ├── 04_create_agent.py     # Creates agent and starts chat
+    ├── 04_create_agent.py     # Creates agent with MCP tool and starts chat
+    ├── 05_cleanup.py          # Cleans up all resources
     └── utils/
         ├── __init__.py
         └── config.py          # Shared configuration loader
@@ -180,13 +200,19 @@ cp .env.example .env
 
 ## Cleanup
 
-To delete all Azure resources created by this demo:
+To clean up AI Search resources (KBs, KSs, indexers, indexes), blobs, and MCP connections:
+
+```bash
+python scripts/05_cleanup.py
+```
+
+To delete all Azure resources entirely:
 
 ```bash
 az group delete --name rg-demo-foundry-iq --yes --no-wait
 ```
 
-> **Note:** This permanently deletes all resources in the resource group including any data stored in Blob Storage and the AI Search index.
+> **Note:** This permanently deletes all resources in the resource group.
 
 ## Resources
 

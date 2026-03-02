@@ -20,6 +20,8 @@ from azure.search.documents.indexes.models import (
     AzureOpenAIVectorizerParameters,
     KnowledgeBase,
     KnowledgeBaseAzureOpenAIModel,
+    KnowledgeRetrievalLowReasoningEffort,
+    KnowledgeRetrievalOutputMode,
     KnowledgeSourceAzureOpenAIVectorizer,
     KnowledgeSourceIngestionParameters,
     KnowledgeSourceReference,
@@ -376,7 +378,7 @@ def poll_ingestion_status(
 def create_knowledge_base(
     index_client: SearchIndexClient, config: dict, ks_name: str
 ) -> str:
-    """Create a Knowledge Base referencing the knowledge source."""
+    """Create a Knowledge Base with agentic retrieval features."""
     kb_name = config["KNOWLEDGE_BASE_NAME"]
 
     console.print(f"\n[bold]Step 3 · Create Knowledge Base[/bold] [cyan]{kb_name}[/cyan]")
@@ -388,6 +390,8 @@ def create_knowledge_base(
         model_name=config["AZURE_OPENAI_GPT_MINI_DEPLOYMENT"],
     )
     console.print(f"  Reasoning model:     [dim]{config['AZURE_OPENAI_GPT_MINI_DEPLOYMENT']}[/dim]")
+    console.print(f"  Output mode:         [dim]AnswerSynthesis[/dim]")
+    console.print(f"  Reasoning effort:    [dim]low (LLM query planning)[/dim]")
 
     knowledge_base = KnowledgeBase(
         name=kb_name,
@@ -399,7 +403,18 @@ def create_knowledge_base(
                 azure_open_ai_parameters=chat_params
             )
         ],
-        description="Knowledge base for Foundry IQ demo with agentic retrieval",
+        retrieval_reasoning_effort=KnowledgeRetrievalLowReasoningEffort(),
+        output_mode=KnowledgeRetrievalOutputMode.ANSWER_SYNTHESIS,
+        description="Foundry IQ demo — agentic retrieval over ingested documents",
+        retrieval_instructions=(
+            "Use the knowledge source to answer questions about the documents. "
+            "Decompose complex queries into parallel subqueries for thorough retrieval."
+        ),
+        answer_instructions=(
+            "Provide concise, informative answers based on the retrieved documents. "
+            "Always cite sources with document name and section. "
+            "If the knowledge base does not contain relevant information, say so clearly."
+        ),
     )
 
     dump_obj("Knowledge Base request payload", knowledge_base)
@@ -418,8 +433,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Create Knowledge Source & Base for agentic retrieval")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose/debug logging (SDK HTTP traces)")
     parser.add_argument(
-        "--mode", choices=["minimal", "standard"], default="minimal",
-        help="Content extraction mode: 'minimal' (fast, built-in text extraction) or 'standard' (Content Understanding with OCR, layout analysis, semantic chunking). Default: minimal",
+        "--mode", choices=["minimal", "standard"], default="standard",
+        help="Content extraction mode: 'standard' (Content Understanding with OCR, layout analysis, semantic chunking) or 'minimal' (fast, built-in text extraction). Default: standard",
     )
     args = parser.parse_args()
 
