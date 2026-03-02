@@ -154,7 +154,7 @@ def run_chat_loop(project_client: AIProjectClient, agent: object) -> None:
                     tool_choice="required",
                     input=user_input,
                     extra_body={
-                        "agent": {"name": agent.name, "type": "agent_reference"}
+                        "agent_reference": {"name": agent.name, "type": "agent_reference"}
                     },
                 )
 
