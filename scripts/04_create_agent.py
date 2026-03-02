@@ -18,11 +18,12 @@ import requests as http_requests
 from azure.identity import DefaultAzureCredential
 from azure.ai.agents import AgentsClient
 from azure.ai.agents.models import (
-    FunctionTool,
+    FunctionDefinition,
     MessageRole,
     RequiredFunctionToolCall,
     RunStatus,
     SubmitToolOutputsAction,
+    ToolDefinition,
     ToolOutput,
 )
 from rich.console import Console
@@ -41,29 +42,6 @@ SYSTEM_INSTRUCTIONS = (
 )
 
 KB_API_VERSION = "2025-11-01-preview"
-
-# Function tool definition for the agent
-KB_RETRIEVE_FUNCTION = {
-    "type": "function",
-    "function": {
-        "name": "knowledge_base_retrieve",
-        "description": (
-            "Search the knowledge base for information from indexed documents. "
-            "Use this for any question about the documents. The knowledge base "
-            "performs agentic retrieval with query decomposition and semantic reranking."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "The search query to find relevant information.",
-                }
-            },
-            "required": ["query"],
-        },
-    },
-}
 
 
 def call_kb_retrieve(
@@ -124,13 +102,33 @@ def create_agent(agents_client: AgentsClient, config: dict) -> object:
     console.print(f"  Model:           [cyan]{model}[/cyan]")
     console.print(f"  Tool:            [dim]knowledge_base_retrieve (function)[/dim]")
 
-    functions = FunctionTool(functions=[KB_RETRIEVE_FUNCTION["function"]])
+    tool_def = ToolDefinition(
+        type="function",
+        function=FunctionDefinition(
+            name="knowledge_base_retrieve",
+            description=(
+                "Search the knowledge base for information from indexed documents. "
+                "Use this for any question about the documents. The knowledge base "
+                "performs agentic retrieval with query decomposition and semantic reranking."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query to find relevant information.",
+                    }
+                },
+                "required": ["query"],
+            },
+        ),
+    )
 
     agent = agents_client.create_agent(
         model=model,
         name="Foundry IQ Demo Agent",
         instructions=SYSTEM_INSTRUCTIONS,
-        tools=functions.definitions,
+        tools=[tool_def],
     )
 
     console.print(f"  [green]✓ Agent created:[/green] {agent.id}")
