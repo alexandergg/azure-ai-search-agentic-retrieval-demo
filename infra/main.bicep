@@ -46,6 +46,37 @@ module openAi 'modules/openai.bicep' = {
   }
 }
 
+// ── Azure AI Services (Content Understanding) ──
+module aiServices 'modules/ai-services.bicep' = {
+  name: '${namePrefix}-aiservices'
+  params: {
+    location: location
+    namePrefix: namePrefix
+  }
+}
+
+// ── RBAC: AI Search → AI Services (Cognitive Services User) ──
+resource searchToAiServicesRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, namePrefix, 'search-aiservices-coguser')
+  scope: resourceGroup()
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a97b65f3-24c7-4388-baec-2e87135dc908') // Cognitive Services User
+    principalId: aiSearch.outputs.searchPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// ── RBAC: AI Search → OpenAI (Cognitive Services OpenAI User for embeddings) ──
+resource searchToOpenAiRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, namePrefix, 'search-openai-coguser')
+  scope: resourceGroup()
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd') // Cognitive Services OpenAI User
+    principalId: aiSearch.outputs.searchPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 // ── AI Foundry (Hub + Project) ──
 module aiFoundry 'modules/ai-foundry.bicep' = {
   name: '${namePrefix}-ai-foundry'
@@ -74,3 +105,5 @@ output hubName string = aiFoundry.outputs.hubName
 output projectName string = aiFoundry.outputs.projectName
 output projectResourceId string = aiFoundry.outputs.projectId
 output projectEndpoint string = aiFoundry.outputs.projectEndpoint
+output aiServicesName string = aiServices.outputs.aiServicesName
+output aiServicesEndpoint string = aiServices.outputs.aiServicesEndpoint

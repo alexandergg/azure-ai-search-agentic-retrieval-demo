@@ -12,6 +12,9 @@ resource searchService 'Microsoft.Search/searchServices@2024-06-01-preview' = {
   sku: {
     name: 'basic'
   }
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     replicaCount: 1
     partitionCount: 1
@@ -28,3 +31,4 @@ resource searchService 'Microsoft.Search/searchServices@2024-06-01-preview' = {
 output searchServiceName string = searchService.name
 output searchServiceId string = searchService.id
 output searchEndpoint string = 'https://${searchService.name}.search.windows.net'
+output searchPrincipalId string = searchService.identity.principalId

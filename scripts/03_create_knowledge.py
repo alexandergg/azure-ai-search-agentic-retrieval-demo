@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from azure.identity import DefaultAzureCredential
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import (
+    AIServices,
     AzureBlobKnowledgeSource,
     AzureBlobKnowledgeSourceParameters,
     AzureOpenAIVectorizerParameters,
@@ -60,6 +61,11 @@ def create_knowledge_source(
     )
 
     # Ingestion parameters with Content Understanding
+    ai_services_endpoint = config.get("AZURE_AI_SERVICES_ENDPOINT", "")
+    if not ai_services_endpoint:
+        console.print("[red]Error:[/red] AZURE_AI_SERVICES_ENDPOINT is not set.")
+        sys.exit(1)
+
     ingestion_params = KnowledgeSourceIngestionParameters(
         disable_image_verbalization=False,
         content_extraction_mode="standard",
@@ -69,6 +75,7 @@ def create_knowledge_source(
         chat_completion_model=KnowledgeBaseAzureOpenAIModel(
             azure_open_ai_parameters=chat_params
         ),
+        ai_services=AIServices(uri=ai_services_endpoint),
     )
 
     # Blob source parameters
@@ -112,8 +119,12 @@ def poll_ingestion_status(index_client: SearchIndexClient, ks_name: str) -> None
             f"Processed: {items_processed} | Failed: {items_failed}"
         )
 
-        if sync_status and sync_status.lower() != "active":
+        if sync_status and sync_status.lower() in ("completed", "succeeded", "failed", "stopped"):
             console.print(f"[green]Ingestion finished with status:[/green] {sync_status}")
+            return
+
+        if sync_status and sync_status.lower() not in ("active", "creating", "running", "inprogress", "in_progress", "queued"):
+            console.print(f"[yellow]Unexpected status:[/yellow] {sync_status}")
             return
 
         time.sleep(POLL_INTERVAL_SECONDS)

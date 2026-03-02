@@ -121,11 +121,7 @@ $storageConnectionString = "$(az deployment group show --resource-group $Resourc
 $projectEndpoint         = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.projectEndpoint.value -o tsv 2>$null)".Trim()
 $projectResourceId       = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.projectResourceId.value -o tsv 2>$null)".Trim()
 $searchServiceName       = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.searchServiceName.value -o tsv 2>$null)".Trim()
-
-# Derive resource IDs from known values
-$subscriptionId          = "$(az account show --query id -o tsv 2>$null)".Trim()
-$searchServiceResourceId = "/subscriptions/$subscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Search/searchServices/$searchServiceName"
-$aiServicesEndpoint      = $openAiEndpoint  # AI Services shares the OpenAI endpoint in this deployment
+$aiServicesEndpoint      = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.aiServicesEndpoint.value -o tsv 2>$null)".Trim()
 
 Write-Ok "Outputs extracted"
 
