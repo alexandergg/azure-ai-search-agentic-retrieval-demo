@@ -1,18 +1,15 @@
 """Create an AI Agent with MCP-based agentic retrieval and run interactive chat.
 
 This script:
-1. Creates a RemoteTool project connection pointing to the Knowledge Base MCP endpoint
-   (with ProjectManagedIdentity auth so the Agent Service can call Search securely)
-2. Creates a Foundry Agent with an MCP tool that uses knowledge_base_retrieve
-3. Runs an interactive CLI chat loop using threads/messages/runs
+1. Creates a Foundry Agent with an MCP tool pointing to the Knowledge Base
+   MCP endpoint (authenticated via api-key header)
+2. Runs an interactive CLI chat loop using threads/messages/runs
 """
 
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
-
-import requests as http_requests
 
 from azure.identity import DefaultAzureCredential
 from azure.ai.agents import AgentsClient
@@ -32,87 +29,23 @@ SYSTEM_INSTRUCTIONS = (
     "If the knowledge base does not contain relevant information, say so clearly."
 )
 
-MCP_CONNECTION_NAME = "demofiq-kb-mcp-connection"
 MCP_API_VERSION = "2025-11-01-preview"
 
 
-def create_remote_tool_connection(
-    config: dict, credential: DefaultAzureCredential, mcp_endpoint: str
-) -> str:
-    """Create a RemoteTool project connection for MCP authentication.
-
-    This tells the Foundry Agent Service to use the project's managed identity
-    when calling the Knowledge Base MCP endpoint on Azure AI Search.
-    """
-    project_resource_id = config["PROJECT_RESOURCE_ID"]
-    connection_name = MCP_CONNECTION_NAME
-
-    console.print(f"\n[bold]Step 1 · Create RemoteTool Connection[/bold]")
-    console.print(f"  Connection name: [cyan]{connection_name}[/cyan]")
-    console.print(f"  MCP endpoint:    [dim]{mcp_endpoint}[/dim]")
-
-    token = credential.get_token("https://management.azure.com/.default").token
-    url = (
-        f"https://management.azure.com{project_resource_id}"
-        f"/connections/{connection_name}?api-version=2025-10-01-preview"
-    )
-
-    body = {
-        "properties": {
-            "authType": "ProjectManagedIdentity",
-            "category": "RemoteTool",
-            "target": mcp_endpoint,
-            "isSharedToAll": True,
-            "audience": "https://search.azure.com/",
-            "metadata": {"ApiType": "Azure"},
-        }
-    }
-
-    resp = http_requests.put(
-        url, json=body, headers={"Authorization": f"Bearer {token}"}
-    )
-
-    if resp.status_code in (200, 201):
-        console.print(f"  [green]✓ RemoteTool connection created[/green]")
-    else:
-        console.print(f"  [red]✗ Failed ({resp.status_code}):[/red] {resp.text}")
-        sys.exit(1)
-
-    return connection_name
-
-
-def delete_remote_tool_connection(
-    config: dict, credential: DefaultAzureCredential
-) -> None:
-    """Delete the RemoteTool project connection."""
-    project_resource_id = config["PROJECT_RESOURCE_ID"]
-    connection_name = MCP_CONNECTION_NAME
-
-    try:
-        token = credential.get_token("https://management.azure.com/.default").token
-        url = (
-            f"https://management.azure.com{project_resource_id}"
-            f"/connections/{connection_name}?api-version=2025-10-01-preview"
-        )
-        resp = http_requests.delete(
-            url, headers={"Authorization": f"Bearer {token}"}
-        )
-        if resp.status_code in (200, 204):
-            console.print(f"  [dim]RemoteTool connection deleted.[/dim]")
-    except Exception:
-        pass
-
-
 def create_agent(
-    agents_client: AgentsClient, config: dict, connection_name: str, mcp_endpoint: str
+    agents_client: AgentsClient, config: dict, mcp_endpoint: str
 ) -> object:
     """Create a Foundry agent with MCP tool for agentic retrieval."""
     model = config.get("AGENT_MODEL", "gpt-4o")
+    search_api_key = config.get("AZURE_SEARCH_API_KEY", "")
 
     console.print(f"\n[bold]Step 2 · Create Agent[/bold]")
     console.print(f"  Model:           [cyan]{model}[/cyan]")
-    console.print(f"  MCP connection:  [dim]{connection_name}[/dim]")
     console.print(f"  Allowed tools:   [dim]knowledge_base_retrieve[/dim]")
+
+    if not search_api_key:
+        console.print("[red]Error:[/red] AZURE_SEARCH_API_KEY not set in .env")
+        sys.exit(1)
 
     mcp_tool = McpTool(
         server_label="knowledge_base",
@@ -120,6 +53,7 @@ def create_agent(
         allowed_tools=["knowledge_base_retrieve"],
     )
     mcp_tool.set_approval_mode("never")
+    mcp_tool.update_headers("api-key", search_api_key)
 
     agent = agents_client.create_agent(
         model=model,
@@ -251,10 +185,7 @@ def main() -> None:
     console.print(f"  Search endpoint:  [dim]{search_endpoint}[/dim]")
     console.print(f"  Knowledge Base:   [cyan]{kb_name}[/cyan]")
 
-    # Step 1: Create RemoteTool project connection for MCP auth
-    connection_name = create_remote_tool_connection(config, credential, mcp_endpoint)
-
-    # Step 2: Create agent with MCP tool
+    # Step 1: Create agent client
     try:
         agents_client = AgentsClient(
             endpoint=project_endpoint,
@@ -264,14 +195,11 @@ def main() -> None:
         console.print(f"[red]Error creating AgentsClient:[/red] {e}")
         sys.exit(1)
 
-    agent = create_agent(agents_client, config, connection_name, mcp_endpoint)
+    # Step 2: Create agent with MCP tool (auth via api-key header)
+    agent = create_agent(agents_client, config, mcp_endpoint)
 
     # Step 3: Interactive chat
     run_chat_loop(agents_client, agent)
-
-    # Cleanup connection
-    console.print("[dim]Removing MCP connection...[/dim]")
-    delete_remote_tool_connection(config, credential)
 
     console.print("[bold green]Done![/bold green]")
 
