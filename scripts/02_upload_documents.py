@@ -63,6 +63,9 @@ def upload_documents(config: dict) -> None:
 
     uploaded = 0
     failed = 0
+    skipped = 0
+
+    MAX_FILE_SIZE = 16 * 1024 * 1024  # 16 MB — Basic tier limit for document extraction
 
     with Progress(
         SpinnerColumn(),
@@ -75,7 +78,19 @@ def upload_documents(config: dict) -> None:
 
         for filepath in pdf_files:
             blob_name = os.path.basename(filepath)
+            file_size = os.path.getsize(filepath)
             progress.update(task, description=f"Uploading {blob_name}...")
+
+            if file_size > MAX_FILE_SIZE:
+                size_mb = file_size / 1024 / 1024
+                console.print(
+                    f"[yellow]⚠ Skipping {blob_name} ({size_mb:.1f} MB) — "
+                    f"exceeds 16 MB extraction limit for Basic tier[/yellow]"
+                )
+                skipped += 1
+                progress.advance(task)
+                continue
+
             try:
                 with open(filepath, "rb") as f:
                     container_client.upload_blob(
@@ -88,7 +103,9 @@ def upload_documents(config: dict) -> None:
             progress.advance(task)
 
     console.print()
-    console.print(f"[green]Upload complete:[/green] {uploaded} succeeded, {failed} failed.")
+    console.print(
+        f"[green]Upload complete:[/green] {uploaded} succeeded, {failed} failed, {skipped} skipped (oversized)."
+    )
 
 
 if __name__ == "__main__":

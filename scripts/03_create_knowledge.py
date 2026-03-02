@@ -297,8 +297,27 @@ def poll_ingestion_status(
             show_auto_created_resources(indexer_client, index_client)
             resources_shown = True
 
-        # Terminal states
+        # ── Determine if ingestion is done ──
+        # The KS sync status stays "active" in continuous sync mode, so we
+        # detect completion by checking the auto-created indexer's last run.
+        ingestion_done = False
         if sync_status.lower() in ("completed", "succeeded", "failed", "stopped"):
+            ingestion_done = True
+
+        # Also check indexer: if last run succeeded and items were processed, we're done
+        try:
+            for iname in indexer_client.get_indexer_names():
+                ist = indexer_client.get_indexer_status(iname).as_dict()
+                lr = ist.get("last_result", {}) or {}
+                lr_status = lr.get("status", "")
+                lr_items = lr.get("items_processed", 0)
+                if lr_status in ("success", "transientFailure") and lr_items > 0:
+                    ingestion_done = True
+                    break
+        except Exception:
+            pass
+
+        if ingestion_done:
             if last_end:
                 console.print(f"\n  [green]Ingestion finished:[/green] {sync_status}")
                 console.print(f"    Started:   {last_start}")
