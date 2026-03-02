@@ -395,7 +395,7 @@ def create_knowledge_base(
     )
     console.print(f"  Reasoning model:     [dim]{config['AZURE_OPENAI_GPT_MINI_DEPLOYMENT']}[/dim]")
     console.print(f"  Output mode:         [dim]AnswerSynthesis[/dim]")
-    console.print(f"  Reasoning effort:    [dim]low (LLM query planning)[/dim]")
+    console.print(f"  Reasoning effort:    [dim]minimal (no LLM query planning)[/dim]")
 
     knowledge_base = KnowledgeBase(
         name=kb_name,

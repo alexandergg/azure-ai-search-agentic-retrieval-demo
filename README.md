@@ -48,8 +48,8 @@ This demo implements an end-to-end Retrieval-Augmented Generation (RAG) pipeline
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/<your-org>/demo-foundry-iq.git
-cd demo-foundry-iq
+git clone https://github.com/alexandergg/azure-ai-search-agentic-retrieval-demo.git
+cd azure-ai-search-agentic-retrieval-demo
 ```
 
 ### 2. Add PDF documents
@@ -105,9 +105,16 @@ Creates an Azure AI Search index with Content Understanding chunking, registers 
 
 ```bash
 python scripts/04_create_agent.py
+
+# With verbose MCP output (raw tool calls):
+python scripts/04_create_agent.py -v
 ```
 
-Creates a RemoteTool project connection for secure MCP authentication, then creates a Foundry Agent that uses `knowledge_base_retrieve` via MCP. Starts an interactive chat session with agentic retrieval (query decomposition → parallel subqueries → semantic reranking → unified response with citations).
+Creates a RemoteTool project connection for secure MCP authentication, then creates a Foundry Agent that uses `knowledge_base_retrieve` via MCP. Starts an interactive chat session with:
+
+- **Streaming responses** — answers are streamed token-by-token with live Markdown rendering
+- **Retrieval journey panel** — after each answer, shows query decomposition, subqueries, timing, token usage, and cited references
+- **Retry logic** — automatic exponential backoff for rate limit (429) errors
 
 ### 8. Cleanup (optional)
 
