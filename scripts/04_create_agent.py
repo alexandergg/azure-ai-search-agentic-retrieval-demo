@@ -1,19 +1,30 @@
-"""Create an AI Agent with MCP-based agentic retrieval and run interactive chat.
+"""Create an AI Agent with agentic retrieval via Knowledge Base and run interactive chat.
 
 This script:
-1. Creates a Foundry Agent with an MCP tool pointing to the Knowledge Base
-   MCP endpoint (authenticated via api-key header)
-2. Runs an interactive CLI chat loop using threads/messages/runs
+1. Creates a Foundry Agent with a function tool for knowledge base retrieval
+2. Calls the Knowledge Base retrieval API locally (with AAD auth) when the
+   agent invokes the tool
+3. Runs an interactive CLI chat loop
 """
 
+import json
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+import requests as http_requests
+
 from azure.identity import DefaultAzureCredential
 from azure.ai.agents import AgentsClient
-from azure.ai.agents.models import McpTool, MessageRole
+from azure.ai.agents.models import (
+    FunctionTool,
+    MessageRole,
+    RequiredFunctionToolCall,
+    RunStatus,
+    SubmitToolOutputsAction,
+    ToolOutput,
+)
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -24,64 +35,131 @@ console = Console()
 
 SYSTEM_INSTRUCTIONS = (
     "You are a helpful assistant that answers questions using the knowledge base. "
-    "Always use the available tools to search for relevant information before answering. "
-    "When you find information, cite the source document name and section if available. "
+    "Always call the knowledge_base_retrieve function to search for relevant information "
+    "before answering. When you find information, cite the source document name and section. "
     "If the knowledge base does not contain relevant information, say so clearly."
 )
 
-MCP_API_VERSION = "2025-11-01-preview"
+KB_API_VERSION = "2025-11-01-preview"
+
+# Function tool definition for the agent
+KB_RETRIEVE_FUNCTION = {
+    "type": "function",
+    "function": {
+        "name": "knowledge_base_retrieve",
+        "description": (
+            "Search the knowledge base for information from indexed documents. "
+            "Use this for any question about the documents. The knowledge base "
+            "performs agentic retrieval with query decomposition and semantic reranking."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query to find relevant information.",
+                }
+            },
+            "required": ["query"],
+        },
+    },
+}
 
 
-def create_agent(
-    agents_client: AgentsClient, config: dict, mcp_endpoint: str
-) -> object:
-    """Create a Foundry agent with MCP tool for agentic retrieval."""
-    model = config.get("AGENT_MODEL", "gpt-4o")
-    search_api_key = config.get("AZURE_SEARCH_API_KEY", "")
+def call_kb_retrieve(
+    search_endpoint: str, kb_name: str, query: str, credential: DefaultAzureCredential,
+    conversation_history: list[dict],
+) -> str:
+    """Call the Knowledge Base retrieval API with agentic retrieval."""
+    token = credential.get_token("https://search.azure.com/.default").token
 
-    console.print(f"\n[bold]Step 2 · Create Agent[/bold]")
-    console.print(f"  Model:           [cyan]{model}[/cyan]")
-    console.print(f"  Allowed tools:   [dim]knowledge_base_retrieve[/dim]")
+    # Build messages from conversation history + current query
+    messages = []
+    for msg in conversation_history[-6:]:  # Last 6 messages for context
+        messages.append({
+            "role": msg["role"],
+            "content": [{"type": "text", "text": msg["content"]}],
+        })
+    # Add the current query as the latest user message if not already there
+    if not messages or messages[-1]["content"][0]["text"] != query:
+        messages.append({
+            "role": "user",
+            "content": [{"type": "text", "text": query}],
+        })
 
-    if not search_api_key:
-        console.print("[red]Error:[/red] AZURE_SEARCH_API_KEY not set in .env")
-        sys.exit(1)
+    url = f"{search_endpoint}/knowledgebases/{kb_name}/retrieve?api-version={KB_API_VERSION}"
 
-    mcp_tool = McpTool(
-        server_label="knowledge_base",
-        server_url=mcp_endpoint,
-        allowed_tools=["knowledge_base_retrieve"],
+    resp = http_requests.post(
+        url,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json={"messages": messages},
+        timeout=60,
     )
-    mcp_tool.set_approval_mode("never")
-    mcp_tool.update_headers("api-key", search_api_key)
+
+    if resp.status_code != 200:
+        return f"Error retrieving from knowledge base: {resp.status_code} - {resp.text[:200]}"
+
+    data = resp.json()
+    response_items = data.get("response", [])
+
+    # Extract text content from response
+    results = []
+    for item in response_items:
+        content_parts = item.get("content", [])
+        for part in content_parts:
+            if part.get("type") == "text":
+                results.append(part["text"])
+
+    if not results:
+        return "No relevant information found in the knowledge base."
+
+    return "\n\n".join(results)
+
+
+def create_agent(agents_client: AgentsClient, config: dict) -> object:
+    """Create a Foundry agent with a function tool for KB retrieval."""
+    model = config.get("AGENT_MODEL", "gpt-4o")
+
+    console.print(f"\n[bold]Step 1 · Create Agent[/bold]")
+    console.print(f"  Model:           [cyan]{model}[/cyan]")
+    console.print(f"  Tool:            [dim]knowledge_base_retrieve (function)[/dim]")
+
+    functions = FunctionTool(functions=[KB_RETRIEVE_FUNCTION["function"]])
 
     agent = agents_client.create_agent(
         model=model,
         name="Foundry IQ Demo Agent",
         instructions=SYSTEM_INSTRUCTIONS,
-        tools=mcp_tool.definitions,
-        tool_resources=mcp_tool.resources,
+        tools=functions.definitions,
     )
 
     console.print(f"  [green]✓ Agent created:[/green] {agent.id}")
     return agent
 
 
-def run_chat_loop(agents_client: AgentsClient, agent: object) -> None:
-    """Run an interactive chat loop with the agent."""
+def run_chat_loop(
+    agents_client: AgentsClient,
+    agent: object,
+    search_endpoint: str,
+    kb_name: str,
+    credential: DefaultAzureCredential,
+) -> None:
+    """Run an interactive chat loop with the agent, handling KB retrieval locally."""
     thread = agents_client.threads.create()
     console.print(f"  [green]✓ Thread created:[/green] {thread.id}\n")
 
     console.print(
         Panel(
             "Type your question and press Enter.\n"
-            "The agent uses [bold]agentic retrieval[/bold] (query decomposition → "
-            "parallel subqueries → semantic reranking → unified response).\n"
+            "The agent uses [bold]agentic retrieval[/bold] via Knowledge Base API\n"
+            "(query decomposition → parallel subqueries → semantic reranking → response).\n"
             "Type [bold]quit[/bold] or [bold]exit[/bold] to stop.",
-            title="Interactive Chat — MCP Agentic Retrieval",
+            title="Interactive Chat — Agentic Retrieval",
             border_style="cyan",
         )
     )
+
+    conversation_history: list[dict] = []
 
     try:
         while True:
@@ -96,6 +174,8 @@ def run_chat_loop(agents_client: AgentsClient, agent: object) -> None:
                 console.print("[dim]Ending chat session...[/dim]")
                 break
 
+            conversation_history.append({"role": "user", "content": user_input})
+
             # Send user message
             agents_client.messages.create(
                 thread_id=thread.id,
@@ -103,14 +183,55 @@ def run_chat_loop(agents_client: AgentsClient, agent: object) -> None:
                 content=user_input,
             )
 
-            # Create a run and poll until complete
-            console.print("[dim]  ⏳ Agent is thinking (agentic retrieval)...[/dim]")
-            run = agents_client.runs.create_and_process(
+            # Create a run
+            console.print("[dim]  ⏳ Agent is thinking...[/dim]")
+            run = agents_client.runs.create(
                 thread_id=thread.id,
                 agent_id=agent.id,
             )
 
-            if run.status == "failed":
+            # Poll and handle tool calls
+            while True:
+                run = agents_client.runs.get(thread_id=thread.id, run_id=run.id)
+
+                if run.status == RunStatus.REQUIRES_ACTION:
+                    action = run.required_action
+                    if isinstance(action, SubmitToolOutputsAction):
+                        tool_outputs = []
+                        for tool_call in action.submit_tool_outputs.tool_calls:
+                            if isinstance(tool_call, RequiredFunctionToolCall):
+                                if tool_call.function.name == "knowledge_base_retrieve":
+                                    args = json.loads(tool_call.function.arguments)
+                                    query = args.get("query", user_input)
+                                    console.print(f"  [dim]  🔍 Retrieving: {query[:80]}...[/dim]")
+                                    result = call_kb_retrieve(
+                                        search_endpoint, kb_name, query,
+                                        credential, conversation_history,
+                                    )
+                                    tool_outputs.append(
+                                        ToolOutput(tool_call_id=tool_call.id, output=result)
+                                    )
+                                else:
+                                    tool_outputs.append(
+                                        ToolOutput(
+                                            tool_call_id=tool_call.id,
+                                            output="Unknown function",
+                                        )
+                                    )
+                        agents_client.runs.submit_tool_outputs(
+                            thread_id=thread.id,
+                            run_id=run.id,
+                            tool_outputs=tool_outputs,
+                        )
+                    continue
+
+                if run.status in (RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED):
+                    break
+
+                import time
+                time.sleep(0.5)
+
+            if run.status == RunStatus.FAILED:
                 console.print(
                     f"[red]Run failed:[/red] {getattr(run, 'last_error', 'Unknown error')}"
                 )
@@ -126,23 +247,9 @@ def run_chat_loop(agents_client: AgentsClient, agent: object) -> None:
                 console.print()
                 console.print("[bold green]Agent:[/bold green]")
                 console.print(Markdown(last_msg.text.value))
-
-                # Display citations if present
-                annotations = getattr(last_msg.text, "annotations", [])
-                if annotations:
-                    console.print("\n[dim]Citations:[/dim]")
-                    for ann in annotations:
-                        citation = getattr(ann, "url_citation", None) or getattr(
-                            ann, "file_citation", None
-                        )
-                        if citation:
-                            title = getattr(citation, "title", None) or getattr(
-                                citation, "filename", "unknown"
-                            )
-                            url = getattr(citation, "url", "")
-                            console.print(f"  [dim]• {title}[/dim]")
-                            if url:
-                                console.print(f"    [dim]{url}[/dim]")
+                conversation_history.append(
+                    {"role": "assistant", "content": last_msg.text.value}
+                )
                 console.print()
             else:
                 console.print("[yellow]No response from agent.[/yellow]\n")
@@ -165,8 +272,8 @@ def run_chat_loop(agents_client: AgentsClient, agent: object) -> None:
 
 
 def main() -> None:
-    """Create agent with MCP agentic retrieval and start interactive chat."""
-    console.print("[bold]Azure AI Foundry — Agent with MCP Agentic Retrieval[/bold]\n")
+    """Create agent with agentic retrieval and start interactive chat."""
+    console.print("[bold]Azure AI Foundry — Agent with Agentic Retrieval[/bold]\n")
 
     config = load_config()
     credential = DefaultAzureCredential()
@@ -175,17 +282,11 @@ def main() -> None:
     search_endpoint = config["AZURE_SEARCH_ENDPOINT"]
     kb_name = config.get("KNOWLEDGE_BASE_NAME", "demo-knowledge-base")
 
-    # Build the MCP endpoint URL for the Knowledge Base
-    mcp_endpoint = (
-        f"{search_endpoint}/knowledgebases/{kb_name}/mcp"
-        f"?api-version={MCP_API_VERSION}"
-    )
-
     console.print(f"  Project endpoint: [dim]{project_endpoint}[/dim]")
     console.print(f"  Search endpoint:  [dim]{search_endpoint}[/dim]")
     console.print(f"  Knowledge Base:   [cyan]{kb_name}[/cyan]")
 
-    # Step 1: Create agent client
+    # Create agent client
     try:
         agents_client = AgentsClient(
             endpoint=project_endpoint,
@@ -195,11 +296,11 @@ def main() -> None:
         console.print(f"[red]Error creating AgentsClient:[/red] {e}")
         sys.exit(1)
 
-    # Step 2: Create agent with MCP tool (auth via api-key header)
-    agent = create_agent(agents_client, config, mcp_endpoint)
+    # Create agent with function tool
+    agent = create_agent(agents_client, config)
 
-    # Step 3: Interactive chat
-    run_chat_loop(agents_client, agent)
+    # Interactive chat with local KB retrieval
+    run_chat_loop(agents_client, agent, search_endpoint, kb_name, credential)
 
     console.print("[bold green]Done![/bold green]")
 
