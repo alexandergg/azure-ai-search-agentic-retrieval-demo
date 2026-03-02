@@ -200,7 +200,7 @@ def main() -> None:
         f"?api-version={MCP_API_VERSION}"
     )
 
-    connection_name = "demofiq_kb_mcp_connection"
+    connection_name = "demofiq-kb-mcp-connection"
     agent_name = "demofiq-knowledge-agent"
 
     console.print(f"  Foundry endpoint: [dim]{foundry_endpoint}[/dim]")
