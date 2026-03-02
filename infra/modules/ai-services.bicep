@@ -8,7 +8,7 @@ var aiServicesName = '${namePrefix}-aiservices'
 var foundryProjectName = '${namePrefix}-foundry-project'
 
 // ── AI Services account (also hosts the Foundry project + model deployments) ──
-resource aiServices 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
+resource aiServices 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' = {
   name: aiServicesName
   location: location
   kind: 'AIServices'
@@ -21,11 +21,12 @@ resource aiServices 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
   properties: {
     customSubDomainName: aiServicesName
     publicNetworkAccess: 'Enabled'
+    allowProjectManagement: true
   }
 }
 
 // ── GPT-4o deployment (for the Foundry agent) ──
-resource gpt4oDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+resource gpt4oDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-04-01-preview' = {
   parent: aiServices
   name: 'gpt-4o'
   sku: {
