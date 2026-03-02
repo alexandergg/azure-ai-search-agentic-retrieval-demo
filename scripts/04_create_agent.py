@@ -121,9 +121,6 @@ def create_agent(
     )
     mcp_tool.set_approval_mode("never")
 
-    # Inject project_connection_id in tool_resources so Agent Service uses project MI for auth
-    mcp_tool.resources["mcp"][0]["project_connection_id"] = connection_name
-
     agent = agents_client.create_agent(
         model=model,
         name="Foundry IQ Demo Agent",
