@@ -65,7 +65,7 @@ def upload_documents(config: dict) -> None:
     failed = 0
     skipped = 0
 
-    MAX_FILE_SIZE = 16 * 1024 * 1024  # 16 MB — Basic tier limit for document extraction
+    MAX_FILE_SIZE = 128 * 1024 * 1024  # 128 MB — Standard tier limit for document extraction
 
     with Progress(
         SpinnerColumn(),
@@ -85,7 +85,7 @@ def upload_documents(config: dict) -> None:
                 size_mb = file_size / 1024 / 1024
                 console.print(
                     f"[yellow]⚠ Skipping {blob_name} ({size_mb:.1f} MB) — "
-                    f"exceeds 16 MB extraction limit for Basic tier[/yellow]"
+                    f"exceeds 128 MB extraction limit for Standard tier[/yellow]"
                 )
                 skipped += 1
                 progress.advance(task)
