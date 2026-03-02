@@ -333,6 +333,10 @@ def poll_ingestion_status(
                 if lr_status in ("success",) and any_items:
                     ingestion_done = True
                     break
+                # Indexer succeeded with 0 items = no new/changed docs (already indexed)
+                if lr_status in ("success",) and not any_items and len(exec_hist) > 0:
+                    ingestion_done = True
+                    break
         except Exception:
             pass
 
