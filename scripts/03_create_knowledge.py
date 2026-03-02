@@ -15,11 +15,11 @@ from azure.search.documents.indexes.models import (
     AzureBlobKnowledgeSource,
     AzureBlobKnowledgeSourceParameters,
     AzureOpenAIVectorizerParameters,
+    KnowledgeBase,
     KnowledgeBaseAzureOpenAIModel,
     KnowledgeSourceAzureOpenAIVectorizer,
     KnowledgeSourceIngestionParameters,
-    SearchKnowledgeBase,
-    SearchKnowledgeBaseKnowledgeSource,
+    KnowledgeSourceReference,
 )
 from rich.console import Console
 
@@ -76,12 +76,12 @@ def create_knowledge_source(
         connection_string=connection_string,
         container_name=container_name,
         is_adls_gen2=False,
-        ingestion=ingestion_params,
+        ingestion_parameters=ingestion_params,
     )
 
     knowledge_source = AzureBlobKnowledgeSource(
         name=ks_name,
-        blob=blob_params,
+        azure_blob_parameters=blob_params,
         description="Blob storage knowledge source for demo PDF documents",
     )
 
@@ -136,14 +136,16 @@ def create_knowledge_base(
         model_name=config["AZURE_OPENAI_GPT_MINI_DEPLOYMENT"],
     )
 
-    knowledge_base = SearchKnowledgeBase(
+    knowledge_base = KnowledgeBase(
         name=kb_name,
         knowledge_sources=[
-            SearchKnowledgeBaseKnowledgeSource(name=ks_name)
+            KnowledgeSourceReference(name=ks_name)
         ],
-        llm_model=KnowledgeBaseAzureOpenAIModel(
-            azure_open_ai_parameters=chat_params
-        ),
+        models=[
+            KnowledgeBaseAzureOpenAIModel(
+                azure_open_ai_parameters=chat_params
+            )
+        ],
         description="Knowledge base for Foundry IQ demo with agentic retrieval",
     )
 
