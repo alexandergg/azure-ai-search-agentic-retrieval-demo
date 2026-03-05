@@ -1,0 +1,95 @@
+{
+  "categories": [
+    {
+      "name": "ai-research",
+      "display_name": "AI Research",
+      "container_name": "documents-ai-research",
+      "knowledge_source_name": "ks-ai-research",
+      "description": "Foundational AI and machine learning research papers covering transformer architectures, language model pre-training, and large-scale model capabilities.",
+      "local_path": "data/ai-research",
+      "documents": [
+        {
+          "filename": "attention-is-all-you-need.pdf",
+          "source": "https://arxiv.org/pdf/1706.03762",
+          "description": "Attention Is All You Need (Vaswani et al., 2017) — the paper that introduced the Transformer architecture"
+        },
+        {
+          "filename": "bert-paper.pdf",
+          "source": "https://arxiv.org/pdf/1810.04805",
+          "description": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding (Devlin et al., 2018)"
+        },
+        {
+          "filename": "gpt4-technical-report.pdf",
+          "source": "https://arxiv.org/pdf/2303.08774",
+          "description": "GPT-4 Technical Report (OpenAI, 2023) — capabilities and limitations of GPT-4"
+        }
+      ]
+    },
+    {
+      "name": "space-science",
+      "display_name": "Space & Earth Science",
+      "container_name": "documents-space-science",
+      "knowledge_source_name": "ks-space-science",
+      "description": "NASA publications on earth observation, satellite imagery, light emission analysis, and environmental monitoring from space.",
+      "local_path": "data/space-science",
+      "documents": [
+        {
+          "filename": "earth_at_night_508.pdf",
+          "source": "https://raw.githubusercontent.com/Azure-Samples/azure-search-sample-data/main/nasa-e-book/earth_at_night_508.pdf",
+          "description": "NASA Earth at Night e-book — satellite imagery and light emission analysis of Earth"
+        },
+        {
+          "filename": "earth_book_2019_tagged.pdf",
+          "source": "https://raw.githubusercontent.com/Azure-Samples/azure-search-sample-data/main/nasa-e-book/earth_book_2019_tagged.pdf",
+          "description": "NASA Earth Book 2019 — comprehensive earth observations and environmental monitoring"
+        }
+      ]
+    },
+    {
+      "name": "standards",
+      "display_name": "Standards & Governance",
+      "container_name": "documents-standards",
+      "knowledge_source_name": "ks-standards",
+      "description": "NIST frameworks and standards for cybersecurity risk management and AI governance, including implementation guidelines and best practices.",
+      "local_path": "data/standards",
+      "documents": [
+        {
+          "filename": "nist-cybersecurity-framework.pdf",
+          "source": "https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.04162018.pdf",
+          "description": "NIST Cybersecurity Framework v1.1 — framework for improving critical infrastructure cybersecurity"
+        },
+        {
+          "filename": "nist-ai-rmf.pdf",
+          "source": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf",
+          "description": "NIST AI Risk Management Framework (AI 100-1) — guidelines for trustworthy AI development"
+        }
+      ]
+    },
+    {
+      "name": "cloud-sustainability",
+      "display_name": "Cloud & Sustainability",
+      "container_name": "documents-cloud-sustainability",
+      "knowledge_source_name": "ks-cloud-sustainability",
+      "description": "Microsoft Azure cloud architecture references and whitepapers on leveraging AI and cloud computing for sustainability and enterprise solutions.",
+      "local_path": "data/cloud-sustainability",
+      "documents": [
+        {
+          "filename": "MSFT_cloud_architecture_contoso.pdf",
+          "source": "https://raw.githubusercontent.com/Azure-Samples/azure-search-sample-data/841f599ea4af402b3ddecd400fbeb30e1507ff39/ai-enrichment-mixed-media/MSFT_cloud_architecture_contoso.pdf",
+          "description": "Microsoft Cloud Architecture for Contoso — enterprise cloud architecture reference"
+        },
+        {
+          "filename": "Accelerating-Sustainability-with-AI-2025.pdf",
+          "source": "https://raw.githubusercontent.com/Azure-Samples/azure-search-sample-data/841f599ea4af402b3ddecd400fbeb30e1507ff39/sustainable-ai-pdf/Accelerating-Sustainability-with-AI-2025.pdf",
+          "description": "Accelerating Sustainability with AI — Microsoft whitepaper on AI for environmental sustainability"
+        }
+      ]
+    }
+  ],
+  "knowledge_base": {
+    "name": "demo-knowledge-base",
+    "description": "Frontier Research & Innovation knowledge base — covers AI research papers, NASA space science, NIST governance standards, and Microsoft cloud & sustainability whitepapers. The query planner routes subqueries to the most relevant knowledge source(s) based on question content.",
+    "retrieval_instructions": "You have access to 4 knowledge domains: AI Research (foundational ML papers), Space & Earth Science (NASA publications), Standards & Governance (NIST frameworks), and Cloud & Sustainability (Microsoft whitepapers). Decompose complex queries into targeted subqueries and route each to the most relevant knowledge source. For cross-domain questions, search multiple sources in parallel.",
+    "answer_instructions": "Provide concise, informative answers based on the retrieved documents. Always cite sources with document name and section. When answering cross-domain questions, clearly organize the response by domain. If the knowledge base does not contain relevant information, say so clearly."
+  }
+}
