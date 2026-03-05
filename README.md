@@ -5,7 +5,7 @@ A multi-agent orchestration demo using **Microsoft Agent Framework SDK** and **A
 ## Features
 
 - **Multi-Agent Orchestration** -- Intelligent routing of queries to specialist agents (AI Research, Space Science, Standards, Cloud & Sustainability)
-- **Microsoft Agent Framework SDK** -- Built on the official gent-framework Python SDK with AzureAISearchContextProvider
+- **Microsoft Agent Framework SDK** -- Built on the official agent-framework Python SDK with AzureAISearchContextProvider
 - **FoundryIQ Knowledge Bases** -- Agentic retrieval mode with LLM-powered query planning and semantic reranking
 - **React + FastAPI Web App** -- Interactive chat UI with workflow visualization and execution trace
 - **CLI Pipeline** -- Standalone scripts for document ingestion, KB setup, and single-agent chat
@@ -14,7 +14,7 @@ A multi-agent orchestration demo using **Microsoft Agent Framework SDK** and **A
 
 ## Architecture
 
-`
+```
 User Query
     |
     v
@@ -30,7 +30,7 @@ FOUNDRYIQ KNOWLEDGE BASE (demo-knowledge-base)
   1 KB with 4 Knowledge Sources
   LLM query planning routes subqueries to the most relevant source(s)
   Hybrid search + semantic reranking
-`
+```
 
 ## Prerequisites
 
@@ -39,13 +39,13 @@ FOUNDRYIQ KNOWLEDGE BASE (demo-knowledge-base)
 - [Azure Developer CLI (azd)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
 - **Python 3.11+**
 - **Node.js 22+** (for frontend)
-- An Azure region that supports agentic retrieval (e.g., astus2, westeurope, swedencentral)
+- An Azure region that supports agentic retrieval (e.g., eastus2, westeurope, swedencentral)
 
 ## Quick Start
 
 ### 1. Clone and set up
 
-`ash
+```bash
 git clone <repo-url>
 cd demo-foundry-iq
 
@@ -54,24 +54,24 @@ source .venv/bin/activate  # or .venv\\Scripts\\Activate on Windows
 
 pip install -r requirements.txt
 pip install -r app/backend/requirements.txt
-`
+```
 
 ### 2. Deploy Azure infrastructure
 
 `powershell
 .\\scripts\\01_deploy_infra.ps1
-`
+```
 
 Or with azd:
 
-`ash
+```bash
 az login && azd auth login
 azd up
-`
+```
 
 ### 3. Set up Knowledge Base
 
-`ash
+```bash
 # Download documents (Linux/Mac)
 bash scripts/00_download_documents.sh
 
@@ -81,37 +81,37 @@ python scripts/00_download_documents.py
 # Upload and create knowledge base
 bash scripts/02_upload_documents.sh
 bash scripts/03_create_knowledge.sh
-`
+```
 
 ### 4. Run the web app
 
-`ash
+```bash
 # Build frontend
 cd app/frontend && npm install && npm run build && cd ../..
 
 # Start backend
 cd app/backend
 uvicorn main:app --reload --port 8000
-`
+```
 
 Open http://localhost:8000 in your browser.
 
 ### 5. Or use the CLI agent
 
-`ash
+```bash
 python scripts/04_create_agent.py
-`
+```
 
 ### 6. Cleanup
 
-`ash
+```bash
 bash scripts/05_cleanup.sh
 # Or: az group delete --name rg-demo-foundry-iq --yes --no-wait
-`
+```
 
 ## Project Structure
 
-`
+```
 demo-foundry-iq/
 +-- app/
 |   +-- backend/
@@ -155,7 +155,7 @@ demo-foundry-iq/
 +-- requirements.txt               # CLI script dependencies
 +-- requirements-dev.txt           # Development dependencies
 +-- AGENTS.md                      # Agent specification (Copilot)
-`
+```
 
 ## Knowledge Base Mapping
 

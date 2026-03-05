@@ -80,7 +80,7 @@ User Query --> LLM Query Planning (gpt-4o-mini) --> Parallel Hybrid Search per s
 |---------|-------|
 | Knowledge Base | demo-knowledge-base |
 | Knowledge Sources | 4 (ks-ai-research, ks-space-science, ks-standards, ks-cloud-sustainability) |
-| Output mode | nswer_synthesis (web app) / EXTRACTIVE_DATA (CLI) |
+| Output mode | answer_synthesis (web app) / EXTRACTIVE_DATA (CLI) |
 
 ## Required RBAC Roles
 
