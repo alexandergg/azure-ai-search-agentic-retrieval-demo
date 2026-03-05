@@ -4,6 +4,7 @@ FoundryIQ Multi-Agent Demo Backend
 FastAPI wrapper around the multi-agent orchestrator with FoundryIQ Knowledge Bases.
 """
 
+import json
 import logging
 import os
 import traceback
@@ -12,6 +13,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -31,6 +33,8 @@ class ChatResponse(BaseModel):
     message: str
     agent: str
     sources: list[dict] = []
+    suggested_questions: list[str] = []
+    retrieval_journey: dict | None = None
 
 
 class HealthResponse(BaseModel):
@@ -75,22 +79,56 @@ async def health():
     return HealthResponse(status="healthy", version="0.1.0")
 
 
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    """Stream chat response using Server-Sent Events."""
+    async def event_generator():
+        try:
+            from agents.orchestrator import run_single_query_stream
+
+            async for event in run_single_query_stream(request.message, request.session_id):
+                event_type = event.get("type", "")
+                data = json.dumps(event, ensure_ascii=False)
+                yield f"event: {event_type}\ndata: {data}\n\n"
+        except Exception as e:
+            logger.error("Error in /chat/stream endpoint:\n%s", traceback.format_exc())
+            yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Chat with the multi-agent system."""
     try:
         from agents.orchestrator import run_single_query
 
-        route, response_text, sources = await run_single_query(request.message)
+        route, response_text, sources, suggested_questions, retrieval_journey = await run_single_query(
+            request.message, request.session_id
+        )
 
         return ChatResponse(
             message=response_text,
             agent=f"{route}-agent",
             sources=sources,
+            suggested_questions=suggested_questions,
+            retrieval_journey=retrieval_journey,
         )
     except Exception as e:
         logger.error("Error in /chat endpoint:\n%s", traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/chat/{session_id}")
+async def clear_session(session_id: str):
+    from agents.orchestrator import clear_session_memory
+
+    clear_session_memory(session_id)
+    return {"status": "cleared"}
 
 
 @app.get("/agents")

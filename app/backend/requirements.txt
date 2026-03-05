@@ -17,6 +17,7 @@ agent-framework-azure-ai>=1.0.0rc3
 agent-framework-azure-ai-search>=1.0.0b260304
 
 # Utilities
+aiohttp>=3.9.0
 httpx>=0.26.0
 pydantic>=2.5.0
 rich>=13.7.0

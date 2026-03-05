@@ -9,11 +9,15 @@ Routes queries to specialized agents:
 """
 
 import asyncio
+import logging
 import os
+import re
 
 from azure.identity.aio import DefaultAzureCredential
-from agent_framework import Agent, Message
+from agent_framework import Agent, Message, AgentSession, InMemoryHistoryProvider
 from agent_framework.azure import AzureOpenAIChatClient, AzureAISearchContextProvider
+
+logger = logging.getLogger(__name__)
 
 # Configuration
 SEARCH_ENDPOINT = os.getenv("AZURE_SEARCH_ENDPOINT", "")
@@ -37,6 +41,116 @@ Respond with ONLY one of these options:
 - "none" - for greetings (hi, hello, how are you), casual conversation, or any topic NOT related to the four domains above
 
 Just respond with the option name, nothing else."""
+
+# In-memory session storage
+_sessions: dict[str, AgentSession] = {}
+
+FOLLOW_UP_PATTERN = re.compile(r"<<FOLLOW_UP>>(.*?)<</FOLLOW_UP>>", re.DOTALL)
+
+
+def _parse_follow_ups(text: str) -> tuple[str, list[str]]:
+    """Extract follow-up questions from response text and return cleaned text + questions."""
+    questions = [m.strip() for m in FOLLOW_UP_PATTERN.findall(text)]
+    clean_text = FOLLOW_UP_PATTERN.sub("", text).strip()
+    return clean_text, questions
+
+
+def clear_session_memory(session_id: str) -> None:
+    _sessions.pop(session_id, None)
+
+
+RETRIEVAL_TYPES = frozenset(
+    ["searchIndex", "azureBlob", "web", "remoteSharePoint",
+     "indexedSharePoint", "indexedOneLake"]
+)
+
+
+def _get_search_query(act: dict) -> str:
+    for key in ("searchIndexArguments", "azureBlobArguments", "webArguments"):
+        args = act.get(key)
+        if args and "search" in args:
+            return args["search"]
+    return "—"
+
+
+async def _retrieve_journey(credential, query: str, route: str) -> dict | None:
+    """Make a direct KB retrieve call to capture retrieval activity data."""
+    from azure.identity.aio import DefaultAzureCredential as AsyncCredential
+    import aiohttp
+
+    agent_labels = {
+        "ai-research": "ks-ai-research",
+        "space-science": "ks-space-science",
+        "standards": "ks-standards",
+        "cloud-sustainability": "ks-cloud-sustainability",
+    }
+    agent_names = {
+        "ai-research": "AI Research Agent",
+        "space-science": "Space Science Agent",
+        "standards": "Standards Agent",
+        "cloud-sustainability": "Cloud & Sustainability Agent",
+    }
+
+    kb_source = agent_labels.get(route)
+    if not kb_source or not SEARCH_ENDPOINT:
+        return None
+
+    try:
+        token_cred = AsyncCredential()
+        token = await token_cred.get_token("https://search.azure.com/.default")
+
+        url = f"{SEARCH_ENDPOINT}/knowledgebases/{KB_NAME}/retrieve?api-version=2025-11-01-preview"
+        body = {
+            "messages": [{"role": "user", "content": [{"type": "text", "text": query}]}],
+            "retrievalReasoningEffort": {"kind": "low"},
+            "includeActivity": True,
+            "knowledgeSourceParams": [{
+                "knowledgeSourceName": kb_source,
+                "kind": "searchIndex",
+                "includeReferences": True,
+                "includeReferenceSourceData": True,
+            }],
+        }
+
+        async with aiohttp.ClientSession() as http:
+            async with http.post(url, json=body, headers={
+                "Authorization": f"Bearer {token.token}",
+                "Content-Type": "application/json",
+            }, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                if resp.status in (200, 206):
+                    data = await resp.json()
+                    activity = data.get("activity", [])
+                    references = data.get("references", [])
+
+                    # Build summary
+                    searches = [a for a in activity if a.get("type") in RETRIEVAL_TYPES]
+                    planning = [a for a in activity if a.get("type") == "modelQueryPlanning"]
+                    reasoning = [a for a in activity if a.get("type") == "agenticReasoning"]
+                    synthesis = [a for a in activity if a.get("type") == "modelAnswerSynthesis"]
+
+                    summary = {
+                        "total_time_ms": sum(a.get("elapsedMs", 0) for a in activity),
+                        "total_docs_retrieved": sum(a.get("count", 0) for a in searches),
+                        "num_subqueries": len(searches),
+                        "num_references": len(references),
+                        "total_input_tokens": sum(a.get("inputTokens", 0) for a in planning + synthesis),
+                        "total_output_tokens": sum(a.get("outputTokens", 0) for a in planning + synthesis),
+                        "total_reasoning_tokens": sum(a.get("reasoningTokens", 0) for a in reasoning),
+                    }
+
+                    return {
+                        "route": route,
+                        "agent_name": agent_names.get(route, route),
+                        "activity": activity,
+                        "references": references,
+                        "summary": summary,
+                    }
+        await token_cred.close()
+    except Exception as e:
+        logger.warning("Retrieval journey call failed: %s", e)
+
+    return None
+
 
 GREETING_RESPONSE = (
     "Hello! I'm the FoundryIQ multi-agent assistant. I can help you with:\n\n"
@@ -152,8 +266,8 @@ async def run_orchestrator():
     await credential.close()
 
 
-async def run_single_query(query: str) -> tuple[str, str, list[dict]]:
-    """Run a single query and return (route, response, sources).
+async def run_single_query(query: str, session_id: str | None = None) -> tuple[str, str, list[dict], list[str], dict | None]:
+    """Run a single query and return (route, response, sources, suggested_questions, retrieval_journey).
 
     Used by the FastAPI backend for individual chat requests.
     """
@@ -166,6 +280,8 @@ async def run_single_query(query: str) -> tuple[str, str, list[dict]]:
         "standards": "ks-standards",
         "cloud-sustainability": "ks-cloud-sustainability",
     }
+
+    follow_up_suffix = "\n\nAfter your response, suggest 2-3 follow-up questions the user might ask next. Format each as: <<FOLLOW_UP>>question text<</FOLLOW_UP>>"
 
     chat_client = AzureOpenAIChatClient(
         endpoint=AI_SERVICES_ENDPOINT,
@@ -184,14 +300,24 @@ async def run_single_query(query: str) -> tuple[str, str, list[dict]]:
 
         specialists = {
             "ai-research": Agent(
-                client=chat_client, context_providers=[kb_context], instructions=AI_RESEARCH_INSTRUCTIONS
+                client=chat_client,
+                context_providers=[kb_context, InMemoryHistoryProvider()],
+                instructions=AI_RESEARCH_INSTRUCTIONS + follow_up_suffix,
             ),
             "space-science": Agent(
-                client=chat_client, context_providers=[kb_context], instructions=SPACE_SCIENCE_INSTRUCTIONS
+                client=chat_client,
+                context_providers=[kb_context, InMemoryHistoryProvider()],
+                instructions=SPACE_SCIENCE_INSTRUCTIONS + follow_up_suffix,
             ),
-            "standards": Agent(client=chat_client, context_providers=[kb_context], instructions=STANDARDS_INSTRUCTIONS),
+            "standards": Agent(
+                client=chat_client,
+                context_providers=[kb_context, InMemoryHistoryProvider()],
+                instructions=STANDARDS_INSTRUCTIONS + follow_up_suffix,
+            ),
             "cloud-sustainability": Agent(
-                client=chat_client, context_providers=[kb_context], instructions=CLOUD_SUSTAINABILITY_INSTRUCTIONS
+                client=chat_client,
+                context_providers=[kb_context, InMemoryHistoryProvider()],
+                instructions=CLOUD_SUSTAINABILITY_INSTRUCTIONS + follow_up_suffix,
             ),
         }
 
@@ -199,11 +325,31 @@ async def run_single_query(query: str) -> tuple[str, str, list[dict]]:
 
         # Short-circuit for greetings / off-topic queries
         if route == "none":
-            return route, GREETING_RESPONSE, []
+            return route, GREETING_RESPONSE, [], [], None
 
         agent = specialists[route]
         message = Message(role="user", text=query)
-        response = await agent.run([message])
+
+        # Get or create session
+        agent_session = None
+        if session_id:
+            if session_id not in _sessions:
+                _sessions[session_id] = agent.create_session(session_id=session_id)
+            agent_session = _sessions[session_id]
+
+        # Run agent response and retrieval journey in parallel
+        async def get_response():
+            if agent_session:
+                return await agent.run([message], session=agent_session)
+            return await agent.run([message])
+
+        response, journey = await asyncio.gather(
+            get_response(),
+            _retrieve_journey(credential, query, route),
+        )
+
+        # Parse follow-up questions
+        clean_text, suggested_questions = _parse_follow_ups(response.text)
 
         # Extract sources from citations if available
         sources = []
@@ -234,7 +380,146 @@ async def run_single_query(query: str) -> tuple[str, str, list[dict]]:
         if not sources:
             sources = [{"kb": kb_label, "title": "Knowledge Base", "filepath": kb_label}]
 
-        return route, response.text, sources
+        return route, clean_text, sources, suggested_questions, journey
+
+    await credential.close()
+
+
+async def run_single_query_stream(query: str, session_id: str | None = None):
+    """Stream a single query response. Yields dicts with type: 'route', 'delta', 'metadata', 'done'."""
+
+    credential = DefaultAzureCredential()
+
+    agent_labels = {
+        "ai-research": "ks-ai-research",
+        "space-science": "ks-space-science",
+        "standards": "ks-standards",
+        "cloud-sustainability": "ks-cloud-sustainability",
+    }
+
+    follow_up_suffix = "\n\nAfter your response, suggest 2-3 follow-up questions the user might ask next. Format each as: <<FOLLOW_UP>>question text<</FOLLOW_UP>>"
+
+    chat_client = AzureOpenAIChatClient(
+        endpoint=AI_SERVICES_ENDPOINT,
+        deployment_name=MODEL,
+        credential=credential,
+    )
+
+    async with AzureAISearchContextProvider(
+        endpoint=SEARCH_ENDPOINT,
+        knowledge_base_name=KB_NAME,
+        credential=credential,
+        mode="agentic",
+        knowledge_base_output_mode="answer_synthesis",
+    ) as kb_context:
+        router = Agent(client=chat_client, instructions=ROUTER_INSTRUCTIONS)
+
+        specialists = {
+            "ai-research": Agent(
+                client=chat_client,
+                context_providers=[kb_context, InMemoryHistoryProvider()],
+                instructions=AI_RESEARCH_INSTRUCTIONS + follow_up_suffix,
+            ),
+            "space-science": Agent(
+                client=chat_client,
+                context_providers=[kb_context, InMemoryHistoryProvider()],
+                instructions=SPACE_SCIENCE_INSTRUCTIONS + follow_up_suffix,
+            ),
+            "standards": Agent(
+                client=chat_client,
+                context_providers=[kb_context, InMemoryHistoryProvider()],
+                instructions=STANDARDS_INSTRUCTIONS + follow_up_suffix,
+            ),
+            "cloud-sustainability": Agent(
+                client=chat_client,
+                context_providers=[kb_context, InMemoryHistoryProvider()],
+                instructions=CLOUD_SUSTAINABILITY_INSTRUCTIONS + follow_up_suffix,
+            ),
+        }
+
+        route = await route_query(router, query)
+
+        # Yield routing info
+        yield {"type": "route", "agent": f"{route}-agent"}
+
+        if route == "none":
+            yield {"type": "delta", "text": GREETING_RESPONSE}
+            yield {"type": "metadata", "sources": [], "suggested_questions": [], "retrieval_journey": None}
+            yield {"type": "done"}
+            return
+
+        agent = specialists[route]
+        message = Message(role="user", text=query)
+
+        # Get or create session
+        agent_session = None
+        if session_id:
+            if session_id not in _sessions:
+                _sessions[session_id] = agent.create_session(session_id=session_id)
+            agent_session = _sessions[session_id]
+
+        # Start retrieval journey in background
+        journey_task = asyncio.create_task(_retrieve_journey(credential, query, route))
+
+        # Stream agent response
+        full_text = ""
+        if agent_session:
+            stream = agent.run([message], stream=True, session=agent_session)
+        else:
+            stream = agent.run([message], stream=True)
+
+        async for update in stream:
+            if update.text:
+                full_text += update.text
+                yield {"type": "delta", "text": update.text}
+
+        # Get final response for citations
+        final_response = await stream.get_final_response()
+
+        # Parse follow-ups from accumulated text
+        clean_text, suggested_questions = _parse_follow_ups(full_text)
+
+        # Extract sources (same logic as run_single_query)
+        sources = []
+        kb_label = agent_labels.get(route, "unknown")
+
+        if hasattr(final_response, "citations") and final_response.citations:
+            for citation in final_response.citations:
+                source_info = {"kb": kb_label}
+                if hasattr(citation, "title") and citation.title:
+                    source_info["title"] = citation.title
+                if hasattr(citation, "filepath") and citation.filepath:
+                    source_info["filepath"] = citation.filepath
+                if hasattr(citation, "url") and citation.url:
+                    source_info["url"] = citation.url
+                if len(source_info) > 1:
+                    sources.append(source_info)
+
+        if not sources and hasattr(final_response, "context") and final_response.context:
+            for ctx in final_response.context:
+                source_info = {"kb": kb_label}
+                if hasattr(ctx, "title"):
+                    source_info["title"] = ctx.title
+                if hasattr(ctx, "source"):
+                    source_info["filepath"] = ctx.source
+                if len(source_info) > 1:
+                    sources.append(source_info)
+
+        if not sources:
+            sources = [{"kb": kb_label, "title": "Knowledge Base", "filepath": kb_label}]
+
+        # Wait for retrieval journey
+        journey = await journey_task
+
+        # Yield metadata and done
+        yield {
+            "type": "metadata",
+            "sources": sources,
+            "suggested_questions": suggested_questions,
+            "retrieval_journey": journey,
+            "clean_text": clean_text,
+        }
+        yield {"type": "done"}
 
     await credential.close()
 
