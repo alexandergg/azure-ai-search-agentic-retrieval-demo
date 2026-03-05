@@ -12,12 +12,12 @@ import asyncio
 import os
 
 from azure.identity.aio import DefaultAzureCredential
-from agent_framework import ChatAgent, ChatMessage, Role
-from agent_framework.azure import AzureAIAgentClient, AzureAISearchContextProvider
+from agent_framework import Agent, Message
+from agent_framework.azure import AzureOpenAIChatClient, AzureAISearchContextProvider
 
 # Configuration
 SEARCH_ENDPOINT = os.getenv("AZURE_SEARCH_ENDPOINT", "")
-PROJECT_ENDPOINT = os.getenv("PROJECT_ENDPOINT", "")
+AI_SERVICES_ENDPOINT = os.getenv("AZURE_AI_SERVICES_ENDPOINT", "")
 MODEL = os.getenv("AGENT_MODEL", "gpt-4o")
 KB_NAME = os.getenv("KNOWLEDGE_BASE_NAME", "demo-knowledge-base")
 
@@ -38,10 +38,10 @@ Respond with ONLY one of these agent names:
 Just respond with the agent name, nothing else."""
 
 
-async def route_query(client: ChatAgent, query: str) -> str:
+async def route_query(client: Agent, query: str) -> str:
     """Route a query to the appropriate specialist."""
-    message = ChatMessage(role=Role.USER, text=query)
-    response = await client.run(message)
+    message = Message(role="user", text=query)
+    response = await client.run([message])
     route = response.text.strip().lower()
 
     if "ai-research" in route or "transformer" in route or "bert" in route or "gpt" in route:
@@ -61,46 +61,45 @@ async def run_orchestrator():
 
     credential = DefaultAzureCredential()
 
-    async with (
-        AzureAIAgentClient(
-            project_endpoint=PROJECT_ENDPOINT,
-            model_deployment_name=MODEL,
-            credential=credential,
-        ) as client,
-        AzureAISearchContextProvider(
-            endpoint=SEARCH_ENDPOINT,
-            knowledge_base_name=KB_NAME,
-            credential=credential,
-            mode="agentic",
-            knowledge_base_output_mode="answer_synthesis",
-        ) as kb_context,
-    ):
+    chat_client = AzureOpenAIChatClient(
+        endpoint=AI_SERVICES_ENDPOINT,
+        deployment_name=MODEL,
+        credential=credential,
+    )
+
+    async with AzureAISearchContextProvider(
+        endpoint=SEARCH_ENDPOINT,
+        knowledge_base_name=KB_NAME,
+        credential=credential,
+        mode="agentic",
+        knowledge_base_output_mode="answer_synthesis",
+    ) as kb_context:
         # Create router agent (no KB, just for routing decisions)
-        router = ChatAgent(
-            chat_client=client,
+        router = Agent(
+            client=chat_client,
             instructions=ROUTER_INSTRUCTIONS,
         )
 
         # Create specialist agents with KB grounding
         specialists = {
-            "ai-research": ChatAgent(
-                chat_client=client,
-                context_provider=kb_context,
+            "ai-research": Agent(
+                client=chat_client,
+                context_providers=[kb_context],
                 instructions=AI_RESEARCH_INSTRUCTIONS,
             ),
-            "space-science": ChatAgent(
-                chat_client=client,
-                context_provider=kb_context,
+            "space-science": Agent(
+                client=chat_client,
+                context_providers=[kb_context],
                 instructions=SPACE_SCIENCE_INSTRUCTIONS,
             ),
-            "standards": ChatAgent(
-                chat_client=client,
-                context_provider=kb_context,
+            "standards": Agent(
+                client=chat_client,
+                context_providers=[kb_context],
                 instructions=STANDARDS_INSTRUCTIONS,
             ),
-            "cloud-sustainability": ChatAgent(
-                chat_client=client,
-                context_provider=kb_context,
+            "cloud-sustainability": Agent(
+                client=chat_client,
+                context_providers=[kb_context],
                 instructions=CLOUD_SUSTAINABILITY_INSTRUCTIONS,
             ),
         }
@@ -123,8 +122,8 @@ async def run_orchestrator():
                 print(f"\n🔄 Routed to: {route.replace('-', ' ').title()} Agent")
 
                 # Get response from specialist
-                message = ChatMessage(role=Role.USER, text=query)
-                response = await agent.run(message)
+                message = Message(role="user", text=query)
+                response = await agent.run([message])
                 print(f"\n💬 Response:\n{response.text}\n")
 
             except KeyboardInterrupt:
@@ -151,39 +150,38 @@ async def run_single_query(query: str) -> tuple[str, str, list[dict]]:
         "cloud-sustainability": "ks-cloud-sustainability",
     }
 
-    async with (
-        AzureAIAgentClient(
-            project_endpoint=PROJECT_ENDPOINT,
-            model_deployment_name=MODEL,
-            credential=credential,
-        ) as client,
-        AzureAISearchContextProvider(
-            endpoint=SEARCH_ENDPOINT,
-            knowledge_base_name=KB_NAME,
-            credential=credential,
-            mode="agentic",
-            knowledge_base_output_mode="answer_synthesis",
-        ) as kb_context,
-    ):
-        router = ChatAgent(chat_client=client, instructions=ROUTER_INSTRUCTIONS)
+    chat_client = AzureOpenAIChatClient(
+        endpoint=AI_SERVICES_ENDPOINT,
+        deployment_name=MODEL,
+        credential=credential,
+    )
+
+    async with AzureAISearchContextProvider(
+        endpoint=SEARCH_ENDPOINT,
+        knowledge_base_name=KB_NAME,
+        credential=credential,
+        mode="agentic",
+        knowledge_base_output_mode="answer_synthesis",
+    ) as kb_context:
+        router = Agent(client=chat_client, instructions=ROUTER_INSTRUCTIONS)
 
         specialists = {
-            "ai-research": ChatAgent(
-                chat_client=client, context_provider=kb_context, instructions=AI_RESEARCH_INSTRUCTIONS
+            "ai-research": Agent(
+                client=chat_client, context_providers=[kb_context], instructions=AI_RESEARCH_INSTRUCTIONS
             ),
-            "space-science": ChatAgent(
-                chat_client=client, context_provider=kb_context, instructions=SPACE_SCIENCE_INSTRUCTIONS
+            "space-science": Agent(
+                client=chat_client, context_providers=[kb_context], instructions=SPACE_SCIENCE_INSTRUCTIONS
             ),
-            "standards": ChatAgent(chat_client=client, context_provider=kb_context, instructions=STANDARDS_INSTRUCTIONS),
-            "cloud-sustainability": ChatAgent(
-                chat_client=client, context_provider=kb_context, instructions=CLOUD_SUSTAINABILITY_INSTRUCTIONS
+            "standards": Agent(client=chat_client, context_providers=[kb_context], instructions=STANDARDS_INSTRUCTIONS),
+            "cloud-sustainability": Agent(
+                client=chat_client, context_providers=[kb_context], instructions=CLOUD_SUSTAINABILITY_INSTRUCTIONS
             ),
         }
 
         route = await route_query(router, query)
         agent = specialists[route]
-        message = ChatMessage(role=Role.USER, text=query)
-        response = await agent.run(message)
+        message = Message(role="user", text=query)
+        response = await agent.run([message])
 
         # Extract sources from citations if available
         sources = []

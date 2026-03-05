@@ -7,10 +7,14 @@ FastAPI wrapper around the multi-agent orchestrator with FoundryIQ Knowledge Bas
 import os
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+# Load .env from project root
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
 
 
 class ChatRequest(BaseModel):
