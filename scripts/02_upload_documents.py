@@ -1,5 +1,6 @@
-"""Upload PDF documents to Azure Blob Storage."""
+"""Upload PDF documents to Azure Blob Storage, organized by category."""
 
+import json
 import os
 import sys
 
@@ -9,9 +10,11 @@ from azure.storage.blob import BlobServiceClient
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
-from utils.config import load_config
+from utils.config import load_config, load_catalog
 
 console = Console()
+
+MAX_FILE_SIZE = 128 * 1024 * 1024  # 128 MB — Standard tier limit
 
 
 def find_pdf_files(base_dir: str) -> list[str]:
@@ -26,25 +29,15 @@ def find_pdf_files(base_dir: str) -> list[str]:
 
 
 def upload_documents(config: dict) -> None:
-    """Upload all PDFs from data/sample-docs/ to Azure Blob Storage."""
+    """Upload all PDFs from category folders to Azure Blob Storage."""
     connection_string = config.get("AZURE_STORAGE_CONNECTION_STRING", "")
-    container_name = config.get("AZURE_STORAGE_CONTAINER_NAME", "documents")
 
     if not connection_string:
         console.print("[red]Error:[/red] AZURE_STORAGE_CONNECTION_STRING is not set.")
         sys.exit(1)
 
-    # Resolve sample-docs path relative to this script
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    docs_dir = os.path.join(script_dir, "..", "data", "sample-docs")
-    docs_dir = os.path.normpath(docs_dir)
-
-    pdf_files = find_pdf_files(docs_dir)
-    if not pdf_files:
-        console.print(f"[yellow]No PDF files found in {docs_dir}[/yellow]")
-        return
-
-    console.print(f"Found [bold]{len(pdf_files)}[/bold] PDF file(s) in {docs_dir}")
+    catalog = load_catalog()
+    project_root = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 
     try:
         blob_service_client = BlobServiceClient.from_connection_string(connection_string)
@@ -52,63 +45,63 @@ def upload_documents(config: dict) -> None:
         console.print(f"[red]Error connecting to Azure Blob Storage:[/red] {e}")
         sys.exit(1)
 
-    # Create container if it doesn't exist
-    container_client = blob_service_client.get_container_client(container_name)
-    try:
-        container_client.get_container_properties()
-        console.print(f"Container [cyan]{container_name}[/cyan] already exists.")
-    except Exception:
-        console.print(f"Creating container [cyan]{container_name}[/cyan]...")
-        container_client.create_container()
+    total_uploaded = 0
+    total_failed = 0
+    total_skipped = 0
 
-    uploaded = 0
-    failed = 0
-    skipped = 0
+    for category in catalog["categories"]:
+        display_name = category["display_name"]
+        container_name = category["container_name"]
+        local_path = category["local_path"]
+        docs_dir = os.path.normpath(os.path.join(project_root, local_path))
 
-    MAX_FILE_SIZE = 128 * 1024 * 1024  # 128 MB — Standard tier limit for document extraction
+        pdf_files = find_pdf_files(docs_dir)
+        if not pdf_files:
+            console.print(f"  [yellow]No PDF files found in {docs_dir}[/yellow]")
+            continue
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Uploading documents...", total=len(pdf_files))
+        console.print(
+            f"\n  [bold]{display_name}[/bold]: {len(pdf_files)} file(s) → "
+            f"container [cyan]{container_name}[/cyan]"
+        )
+
+        # Create container if it doesn't exist
+        container_client = blob_service_client.get_container_client(container_name)
+        try:
+            container_client.get_container_properties()
+        except Exception:
+            container_client.create_container()
 
         for filepath in pdf_files:
             blob_name = os.path.basename(filepath)
             file_size = os.path.getsize(filepath)
-            progress.update(task, description=f"Uploading {blob_name}...")
 
             if file_size > MAX_FILE_SIZE:
                 size_mb = file_size / 1024 / 1024
                 console.print(
-                    f"[yellow]⚠ Skipping {blob_name} ({size_mb:.1f} MB) — "
-                    f"exceeds 128 MB extraction limit for Standard tier[/yellow]"
+                    f"  [yellow]⚠ Skipping {blob_name} ({size_mb:.1f} MB) — "
+                    f"exceeds 128 MB extraction limit[/yellow]"
                 )
-                skipped += 1
-                progress.advance(task)
+                total_skipped += 1
                 continue
 
+            console.print(f"  Uploading {blob_name}...")
             try:
                 with open(filepath, "rb") as f:
-                    container_client.upload_blob(
-                        name=blob_name, data=f, overwrite=True
-                    )
-                uploaded += 1
+                    container_client.upload_blob(name=blob_name, data=f, overwrite=True)
+                console.print(f"  [green]✓[/green] {blob_name}")
+                total_uploaded += 1
             except Exception as e:
-                console.print(f"[red]Failed to upload {blob_name}:[/red] {e}")
-                failed += 1
-            progress.advance(task)
+                console.print(f"  [red]✗ Failed to upload {blob_name}:[/red] {e}")
+                total_failed += 1
 
-    console.print()
     console.print(
-        f"[green]Upload complete:[/green] {uploaded} succeeded, {failed} failed, {skipped} skipped (oversized)."
+        f"\n[green]Upload complete:[/green] {total_uploaded} succeeded, "
+        f"{total_failed} failed, {total_skipped} skipped (oversized)."
     )
 
 
 if __name__ == "__main__":
-    console.print("[bold]Azure Blob Storage Document Upload[/bold]\n")
+    console.print("[bold]Azure Blob Storage — Multi-Category Document Upload[/bold]\n")
     config = load_config()
     upload_documents(config)
