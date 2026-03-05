@@ -36,9 +36,17 @@ This will:
 After infrastructure is deployed, run the pipeline scripts:
 
 ```bash
+# Download documents (use .sh on Linux/Mac or .py cross-platform)
 bash scripts/00_download_documents.sh
+# or: python scripts/00_download_documents.py
+
+# Upload to Blob Storage
 bash scripts/02_upload_documents.sh
+# or: python scripts/02_upload_documents.py
+
+# Create Knowledge Sources + Knowledge Base
 bash scripts/03_create_knowledge.sh
+# or: python scripts/03_create_knowledge.py
 ```
 
 ### 4. Access the application
@@ -84,7 +92,19 @@ npm install
 npm run dev
 ```
 
-The Vite dev server proxies API calls to `localhost:8000`.
+The Vite dev server proxies `/chat`, `/health`, and `/agents` API calls to `localhost:8000`.
+
+## API Endpoints
+
+The backend serves the following endpoints:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/chat` | Non-streaming chat (JSON request/response) |
+| POST | `/chat/stream` | Streaming chat via Server-Sent Events (SSE) |
+| DELETE | `/chat/{session_id}` | Clear conversation session memory |
+| GET | `/health` | Health check |
+| GET | `/agents` | List available specialist agents |
 
 ## Environment Variables
 

@@ -62,7 +62,7 @@ pip install -r app/backend/requirements.txt
 
 ### 2. Deploy Azure infrastructure
 
-`powershell
+```powershell
 .\\scripts\\01_deploy_infra.ps1
 ```
 
@@ -109,7 +109,7 @@ python scripts/04_create_agent.py
 ### 6. Cleanup
 
 ```bash
-bash scripts/05_cleanup.sh
+bash scripts/06_cleanup.sh
 # Or: az group delete --name rg-demo-foundry-iq --yes --no-wait
 ```
 
@@ -121,6 +121,8 @@ demo-foundry-iq/
 |   +-- backend/
 |   |   +-- main.py                # FastAPI app (/chat, /chat/stream, /health, /agents)
 |   |   +-- requirements.txt       # Backend dependencies
+|   |   +-- requirements-dev.txt   # Dev/test dependencies
+|   |   +-- pyproject.toml         # Project config + tool settings
 |   |   +-- Dockerfile             # Production container image
 |   |   +-- agents/
 |   |   |   +-- orchestrator.py    # Router + run_single_query() + run_single_query_stream()
@@ -148,13 +150,16 @@ demo-foundry-iq/
 |               +-- SuggestedQuestions.tsx # Follow-up question pill buttons
 |               +-- WelcomeScreen.tsx    # Empty-state with domain question cards
 +-- scripts/                       # CLI pipeline
-|   +-- 00_download_documents.sh
-|   +-- 01_deploy_infra.ps1
-|   +-- 02_upload_documents.sh
-|   +-- 03_create_knowledge.sh
-|   +-- 04_create_agent.py
-|   +-- 05_cleanup.sh
-|   +-- utils/config.py            # Python config (for 04_create_agent.py)
+|   +-- 00_download_documents.py   # Download docs (cross-platform Python)
+|   +-- 00_download_documents.sh   # Download docs (Bash)
+|   +-- 01_deploy_infra.ps1        # Deploy Azure infra (PowerShell/Bicep)
+|   +-- 02_upload_documents.py     # Upload to Blob Storage (Python)
+|   +-- 02_upload_documents.sh     # Upload to Blob Storage (Bash)
+|   +-- 03_create_knowledge.py     # Create KB + Knowledge Sources (Python)
+|   +-- 03_create_knowledge.sh     # Create KB + Knowledge Sources (Bash)
+|   +-- 04_create_agent.py         # CLI agent chat
+|   +-- 06_cleanup.sh              # Delete Azure resources
+|   +-- utils/config.py            # Python config (for .py scripts)
 |   +-- utils/config.sh            # Bash config (for .sh scripts)
 +-- data/
 |   +-- catalog.json               # Document catalog (4 domains)
@@ -164,11 +169,20 @@ demo-foundry-iq/
 |   +-- deployment.md              # Deployment guide
 |   +-- MANUAL_STEPS.md            # Manual Azure setup steps
 +-- infra/                         # Bicep IaC templates
+|   +-- main.bicep                 # Root template (orchestrates modules)
+|   +-- main.bicepparam            # Parameter values
+|   +-- modules/
+|       +-- ai-foundry.bicep       # AI Foundry project
+|       +-- ai-search.bicep        # Azure AI Search
+|       +-- ai-services.bicep      # Azure AI Services
+|       +-- container-apps.bicep   # Container Apps hosting
+|       +-- container-registry.bicep # Container Registry
+|       +-- keyvault.bicep         # Key Vault
+|       +-- openai.bicep           # Model deployments
+|       +-- storage.bicep          # Blob Storage
 +-- azure.yaml                     # azd configuration
-+-- .devcontainer/                 # Dev container setup
-+-- pyproject.toml                 # Project config + tool settings
++-- .devcontainer/                  # Dev container setup (Python 3.13, Node 22)
 +-- requirements.txt               # CLI script dependencies
-+-- requirements-dev.txt           # Development dependencies
 +-- AGENTS.md                      # Agent specification (Copilot)
 ```
 

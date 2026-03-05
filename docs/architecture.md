@@ -15,6 +15,8 @@ This document provides a detailed technical overview of the Azure AI Foundry IQ 
 | Knowledge Base | Azure AI Foundry IQ | Groups knowledge sources and enables agentic retrieval |
 | Agent | Azure AI Foundry Agent | LLM-powered agent connected to the knowledge base via MCP |
 | Chat Model | Azure OpenAI (`gpt-4o`) | Powers the Foundry Agent's conversational responses |
+| Web Backend | FastAPI | Multi-agent orchestrator with REST and SSE streaming endpoints |
+| Web Frontend | React 18 + Vite | ChatGPT-style conversational UI with streaming, citations, and retrieval journey |
 
 ## Data Flow
 
@@ -78,6 +80,84 @@ The end-to-end data flow from PDF ingestion to agent response follows these stag
 8. **Query** — The user asks a question via the interactive CLI
 9. **Agentic Retrieval** — The agent invokes the knowledge base, which decomposes the query, runs parallel searches, reranks results, and returns cited passages
 10. **Response** — The agent synthesizes a final answer with inline citations
+
+## Web Application Architecture
+
+The web app implements a multi-agent orchestrator with a ChatGPT-style frontend.
+
+### Multi-Agent Flow
+
+```
+ ┌──────────────────────────────────────────────────────────────────┐
+ │                     WEB APPLICATION                             │
+ │                                                                 │
+ │  ┌───────────┐   SSE Stream   ┌──────────────────────────────┐  │
+ │  │  React    │◄──────────────►│  FastAPI Backend              │  │
+ │  │  Frontend │  POST /chat/   │  ┌────────────────────────┐  │  │
+ │  │           │    stream      │  │ Orchestrator Agent      │  │  │
+ │  │ • Stream  │                │  │ (intent classification) │  │  │
+ │  │ • Cite    │                │  └──────────┬─────────────┘  │  │
+ │  │ • Journey │                │       routes to specialist    │  │
+ │  │ • Follow  │                │  ┌──────────▼─────────────┐  │  │
+ │  │   -ups    │                │  │ Specialist Agent        │  │  │
+ │  └───────────┘                │  │ (AI Research | Space    │  │  │
+ │                               │  │  Science | Standards |  │  │  │
+ │                               │  │  Cloud & Sustainability)│  │  │
+ │                               │  └──────────┬─────────────┘  │  │
+ │                               │             │ KB context      │  │
+ │                               │  ┌──────────▼─────────────┐  │  │
+ │                               │  │ AzureAISearch           │  │  │
+ │                               │  │ ContextProvider         │  │  │
+ │                               │  │ (agentic retrieval)     │  │  │
+ │                               │  └────────────────────────┘  │  │
+ │                               └──────────────────────────────┘  │
+ └──────────────────────────────────────────────────────────────────┘
+```
+
+### Streaming Protocol (SSE)
+
+The `POST /chat/stream` endpoint uses Server-Sent Events for progressive rendering:
+
+```
+event: route       →  Agent classification result (e.g., "ai-research")
+event: delta       →  Text chunk from the LLM (streamed progressively)
+event: metadata    →  Sources, citations, retrieval journey, follow-up questions
+event: done        →  End of stream
+event: error       →  Error details (if any)
+```
+
+The frontend parses these events via a `ReadableStream` and renders text as it arrives, providing a real-time typing effect.
+
+### Retrieval Journey Telemetry
+
+In parallel with each agent response, the backend makes a direct REST call to the KB retrieve API (`/knowledgebases/{kb_name}/retrieve`) with `includeActivity: True`. This returns real pipeline telemetry:
+
+| Stage | Data Captured |
+|-------|---------------|
+| **Query Planning** | Generated subqueries, input/output tokens, elapsed time |
+| **Search Execution** | Per-source search results, knowledge source name, result count, elapsed time |
+| **Agentic Reasoning** | Reasoning tokens, retrieval effort level, elapsed time |
+| **Answer Synthesis** | Input/output tokens, elapsed time |
+
+This data is rendered in the frontend as a collapsible timeline per message with a token summary table.
+
+### Conversation Memory
+
+The backend uses the Agent Framework's built-in session management:
+
+- `AgentSession` + `InMemoryHistoryProvider` automatically store and retrieve conversation history
+- Sessions are keyed by a UUID generated in the frontend
+- Multi-turn context is maintained across messages within a session
+- Sessions are in-memory only (reset on server restart, acceptable for demo)
+
+### Follow-Up Questions
+
+Agent instructions include a suffix requesting follow-up suggestions in `<<FOLLOW_UP>>...<</FOLLOW_UP>>` markers. These are:
+
+1. Parsed via regex from the response text
+2. Stripped from the displayed text
+3. Sent to the frontend as `suggested_questions`
+4. Rendered as clickable pill buttons below each message
 
 ## Chunking Strategy
 
@@ -236,3 +316,53 @@ This demo provisions several Azure services. Below is a summary of cost drivers:
 - Use `gpt-4o-mini` instead of `gpt-4o` for the agent model during development to reduce token costs
 - Delete resources when not in use: `az group delete --name rg-demo-foundry-iq --yes`
 - Monitor costs via the [Azure Cost Management](https://portal.azure.com/#view/Microsoft_Azure_CostManagement) dashboard
+
+## Infrastructure as Code
+
+All Azure resources are provisioned via [Bicep](https://learn.microsoft.com/azure/azure-resource-manager/bicep/overview) templates in the `infra/` directory, orchestrated by `main.bicep`.
+
+### Bicep Modules
+
+| Module | File | Resources Created |
+|--------|------|-------------------|
+| **Storage** | `modules/storage.bicep` | Blob Storage account for document containers |
+| **Key Vault** | `modules/keyvault.bicep` | Azure Key Vault for secrets management |
+| **AI Search** | `modules/ai-search.bicep` | Azure AI Search service with semantic reranking |
+| **AI Services** | `modules/ai-services.bicep` | Azure AI Services (Content Understanding, embeddings) |
+| **OpenAI** | `modules/openai.bicep` | Model deployments (gpt-4o, gpt-4o-mini, text-embedding-3-large) |
+| **AI Foundry** | `modules/ai-foundry.bicep` | AI Foundry project for Knowledge Bases and agents |
+| **Container Registry** | `modules/container-registry.bicep` | ACR for Docker image hosting |
+| **Container Apps** | `modules/container-apps.bicep` | Container Apps environment and app for backend hosting |
+
+### Deployment Methods
+
+- **`azd up`** — Provisions infrastructure and deploys the application in one command (recommended)
+- **`scripts/01_deploy_infra.ps1`** — PowerShell script for infrastructure-only deployment via Bicep
+- **`azd provision`** / **`azd deploy`** — Separate infrastructure and application deployment steps
+
+The `azure.yaml` configuration defines the backend as a Python Container App service with a prebuild hook that compiles the React frontend before Docker image creation.
+
+## Development Environment
+
+### Dev Container
+
+The `.devcontainer/devcontainer.json` provides a fully configured development environment:
+
+| Feature | Configuration |
+|---------|--------------|
+| **Base Image** | `mcr.microsoft.com/devcontainers/python:1-3.13` |
+| **Node.js** | v22 (for frontend build) |
+| **Azure CLI** | Latest (for resource management) |
+| **Azure Developer CLI** | Latest (for `azd` deployments) |
+| **Forwarded Ports** | 8000 (backend), 5173 (Vite dev server) |
+
+**VS Code Extensions** installed automatically:
+- Python + Pylance (Python development)
+- Ruff (linting and formatting)
+- Azure Dev + Bicep (infrastructure)
+- ESLint (frontend linting)
+
+**Post-create setup** installs all dependencies:
+```bash
+pip install -r requirements.txt && pip install -r app/backend/requirements.txt && cd app/frontend && npm install
+```
