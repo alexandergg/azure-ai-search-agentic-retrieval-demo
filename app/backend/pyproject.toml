@@ -1,0 +1,42 @@
+[project]
+name = "demo-foundry-iq"
+version = "0.1.0"
+description = "Multi-agent orchestration demo using Microsoft Agent Framework with FoundryIQ Knowledge Bases"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn>=0.27.0",
+    "agent-framework-core>=1.0.0b260107",
+    "agent-framework-azure-ai>=1.0.0b260107",
+    "azure-ai-agents>=1.2.0b5",
+    "azure-ai-projects>=2.0.0b4",
+    "azure-identity>=1.25.0",
+    "azure-mgmt-cognitiveservices>=14.0.0",
+    "azure-search-documents>=11.7.0b2",
+    "azure-storage-blob>=12.20.0",
+    "openai>=1.40.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.5.0",
+    "httpx>=0.26.0",
+    "requests>=2.31.0",
+    "rich>=13.7.0",
+]
+
+[tool.ruff]
+line-length = 120
+select = ["E", "F", "W", "I", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.isort]
+known-first-party = ["agents", "app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true

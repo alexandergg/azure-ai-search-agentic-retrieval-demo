@@ -1,0 +1,22 @@
+# Core dependencies
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-dotenv>=1.0.0
+
+# Azure SDKs
+azure-identity>=1.25.0
+azure-search-documents>=11.7.0b2
+azure-storage-blob>=12.20.0
+azure-ai-projects>=2.0.0b4
+azure-ai-agents>=1.2.0b6
+openai>=1.40.0
+
+# Microsoft Agent Framework
+agent-framework-core>=1.0.0b260107
+agent-framework-azure-ai>=1.0.0b260107
+
+# Utilities
+httpx>=0.26.0
+pydantic>=2.5.0
+rich>=13.7.0
+requests>=2.31.0
