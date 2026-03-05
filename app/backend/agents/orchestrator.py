@@ -29,22 +29,34 @@ from .cloud_sustainability_agent import CLOUD_SUSTAINABILITY_INSTRUCTIONS
 
 ROUTER_INSTRUCTIONS = """You are a routing agent. Analyze the user query and determine which specialist should handle it.
 
-Respond with ONLY one of these agent names:
+Respond with ONLY one of these options:
 - "ai-research" - for AI/ML research, transformer architecture, attention mechanisms, BERT, GPT, language models, neural networks, deep learning papers
 - "space-science" - for NASA publications, earth observation, satellite imagery, space exploration, light pollution, environmental monitoring from space
 - "standards" - for NIST frameworks, cybersecurity standards, AI risk management, governance, compliance, risk assessment
 - "cloud-sustainability" - for cloud architecture, Azure services, Microsoft whitepapers, sustainability, green technology, enterprise cloud solutions
+- "none" - for greetings (hi, hello, how are you), casual conversation, or any topic NOT related to the four domains above
 
-Just respond with the agent name, nothing else."""
+Just respond with the option name, nothing else."""
+
+GREETING_RESPONSE = (
+    "Hello! I'm the FoundryIQ multi-agent assistant. I can help you with:\n\n"
+    "🧠 **AI Research** — Transformer architecture, attention mechanisms, BERT, GPT\n"
+    "🚀 **Space Science** — NASA publications, earth observation, satellite imagery\n"
+    "📋 **Standards** — NIST cybersecurity framework, AI risk management\n"
+    "☁️ **Cloud & Sustainability** — Azure architecture, Microsoft sustainability\n\n"
+    "Ask me anything about these topics!"
+)
 
 
 async def route_query(client: Agent, query: str) -> str:
-    """Route a query to the appropriate specialist."""
+    """Route a query to the appropriate specialist, or 'none' for off-topic."""
     message = Message(role="user", text=query)
     response = await client.run([message])
     route = response.text.strip().lower()
 
-    if "ai-research" in route or "transformer" in route or "bert" in route or "gpt" in route:
+    if "none" in route or "greeting" in route or "hi" in route:
+        return "none"
+    elif "ai-research" in route or "transformer" in route or "bert" in route or "gpt" in route:
         return "ai-research"
     elif "space" in route or "nasa" in route or "earth" in route:
         return "space-science"
@@ -53,7 +65,7 @@ async def route_query(client: Agent, query: str) -> str:
     elif "cloud" in route or "sustainability" in route or "azure" in route:
         return "cloud-sustainability"
     else:
-        return "ai-research"  # Default
+        return "none"
 
 
 async def run_orchestrator():
@@ -118,6 +130,11 @@ async def run_orchestrator():
 
                 # Route the query
                 route = await route_query(router, query)
+
+                if route == "none":
+                    print(f"\n💬 Response:\n{GREETING_RESPONSE}\n")
+                    continue
+
                 agent = specialists[route]
                 print(f"\n🔄 Routed to: {route.replace('-', ' ').title()} Agent")
 
@@ -179,6 +196,11 @@ async def run_single_query(query: str) -> tuple[str, str, list[dict]]:
         }
 
         route = await route_query(router, query)
+
+        # Short-circuit for greetings / off-topic queries
+        if route == "none":
+            return route, GREETING_RESPONSE, []
+
         agent = specialists[route]
         message = Message(role="user", text=query)
         response = await agent.run([message])

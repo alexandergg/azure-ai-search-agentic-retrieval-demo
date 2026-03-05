@@ -21,7 +21,7 @@ interface Message {
   sources?: SourceInfo[];
 }
 
-type WorkflowStep = "idle" | "routing" | "ai-research" | "space-science" | "standards" | "cloud-sustainability" | "complete";
+type WorkflowStep = "idle" | "routing" | "ai-research" | "space-science" | "standards" | "cloud-sustainability" | "none" | "complete";
 
 type NodeId =
   | "input"
@@ -30,6 +30,7 @@ type NodeId =
   | "space-science"
   | "standards"
   | "cloud-sustainability"
+  | "none"
   | "complete"
   | "idle";
 
@@ -151,6 +152,7 @@ const sourceLogos: Record<string, string> = {
   "space-science-agent": "🚀",
   "standards-agent": "📋",
   "cloud-sustainability-agent": "☁️",
+  "none-agent": "🎯",
   "ks-ai-research": "🧪",
   "ks-space-science": "🌍",
   "ks-standards": "🔒",
