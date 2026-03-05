@@ -21,15 +21,15 @@ interface Message {
   sources?: SourceInfo[];
 }
 
-type WorkflowStep = "idle" | "routing" | "financial" | "scientific" | "legal" | "technology" | "complete";
+type WorkflowStep = "idle" | "routing" | "ai-research" | "space-science" | "standards" | "cloud-sustainability" | "complete";
 
 type NodeId =
   | "input"
   | "orchestrator"
-  | "financial"
-  | "scientific"
-  | "legal"
-  | "technology"
+  | "ai-research"
+  | "space-science"
+  | "standards"
+  | "cloud-sustainability"
   | "complete"
   | "idle";
 
@@ -70,98 +70,98 @@ const agents: AgentInfo[] = [
     knowledgeSources: [],
   },
   {
-    id: "financial",
-    name: "Financial Agent",
-    icon: "💰",
-    description: "Handles financial reports, annual reports, earnings releases, and investor documents.",
+    id: "ai-research",
+    name: "AI Research Agent",
+    icon: "🧠",
+    description: "Handles AI/ML research papers, transformer architecture, attention mechanisms, BERT, GPT, and deep learning.",
     model: "gpt-4o",
-    connectedKB: "ks-financial",
-    knowledgeSources: ["ks-financial"],
+    connectedKB: "ks-ai-research",
+    knowledgeSources: ["ks-ai-research"],
   },
   {
-    id: "scientific",
-    name: "Scientific Agent",
-    icon: "🔬",
-    description: "Handles scientific research, NASA publications, and academic content.",
+    id: "space-science",
+    name: "Space Science Agent",
+    icon: "🚀",
+    description: "Handles NASA publications, earth observation, satellite imagery, and space exploration research.",
     model: "gpt-4o",
-    connectedKB: "ks-scientific",
-    knowledgeSources: ["ks-scientific"],
+    connectedKB: "ks-space-science",
+    knowledgeSources: ["ks-space-science"],
   },
   {
-    id: "legal",
-    name: "Legal Agent",
-    icon: "⚖️",
-    description: "Handles legal regulations, SEC compliance, and regulatory documents.",
+    id: "standards",
+    name: "Standards Agent",
+    icon: "📋",
+    description: "Handles NIST frameworks, cybersecurity standards, AI risk management, and governance.",
     model: "gpt-4o",
-    connectedKB: "ks-legal",
-    knowledgeSources: ["ks-legal"],
+    connectedKB: "ks-standards",
+    knowledgeSources: ["ks-standards"],
   },
   {
-    id: "technology",
-    name: "Technology Agent",
-    icon: "💻",
-    description: "Handles technology whitepapers, Azure documentation, and cloud architecture.",
+    id: "cloud-sustainability",
+    name: "Cloud & Sustainability Agent",
+    icon: "☁️",
+    description: "Handles Azure architecture, Microsoft whitepapers, sustainability, and enterprise cloud solutions.",
     model: "gpt-4o",
-    connectedKB: "ks-technology",
-    knowledgeSources: ["ks-technology"],
+    connectedKB: "ks-cloud-sustainability",
+    knowledgeSources: ["ks-cloud-sustainability"],
   },
 ];
 
 const knowledgeBases: KBInfo[] = [
   {
-    id: "ks-financial",
-    name: "Financial KB",
-    icon: "📊",
-    description: "Annual reports, quarterly earnings, investor documents from public companies.",
-    retrievalMode: "Agentic Retrieval",
-    model: "text-embedding-3-large",
-    knowledgeSources: ["ks-financial"],
-  },
-  {
-    id: "ks-scientific",
-    name: "Scientific KB",
+    id: "ks-ai-research",
+    name: "AI Research KB",
     icon: "🧪",
-    description: "NASA publications, research papers, academic content, earth science.",
+    description: "ArXiv papers on transformers, attention mechanisms, BERT, GPT, and deep learning architectures.",
     retrievalMode: "Agentic Retrieval",
     model: "text-embedding-3-large",
-    knowledgeSources: ["ks-scientific"],
+    knowledgeSources: ["ks-ai-research"],
   },
   {
-    id: "ks-legal",
-    name: "Legal KB",
-    icon: "📜",
-    description: "SEC regulations, compliance materials, interpretive releases.",
+    id: "ks-space-science",
+    name: "Space Science KB",
+    icon: "🌍",
+    description: "NASA publications on earth observation, satellite imagery, light pollution, and space science.",
     retrievalMode: "Agentic Retrieval",
     model: "text-embedding-3-large",
-    knowledgeSources: ["ks-legal"],
+    knowledgeSources: ["ks-space-science"],
   },
   {
-    id: "ks-technology",
-    name: "Technology KB",
-    icon: "☁️",
-    description: "Azure whitepapers, technical documentation, cloud architecture guides.",
+    id: "ks-standards",
+    name: "Standards KB",
+    icon: "🔒",
+    description: "NIST cybersecurity framework, AI risk management framework, and governance standards.",
     retrievalMode: "Agentic Retrieval",
     model: "text-embedding-3-large",
-    knowledgeSources: ["ks-technology"],
+    knowledgeSources: ["ks-standards"],
+  },
+  {
+    id: "ks-cloud-sustainability",
+    name: "Cloud & Sustainability KB",
+    icon: "🌱",
+    description: "Azure whitepapers, Microsoft sustainability reports, and enterprise cloud architecture guides.",
+    retrievalMode: "Agentic Retrieval",
+    model: "text-embedding-3-large",
+    knowledgeSources: ["ks-cloud-sustainability"],
   },
 ];
 
 const sourceLogos: Record<string, string> = {
-  "financial-agent": "💰",
-  "scientific-agent": "🔬",
-  "legal-agent": "⚖️",
-  "technology-agent": "💻",
-  "ks-financial": "📊",
-  "ks-scientific": "🧪",
-  "ks-legal": "📜",
-  "ks-technology": "☁️",
+  "ai-research-agent": "🧠",
+  "space-science-agent": "🚀",
+  "standards-agent": "📋",
+  "cloud-sustainability-agent": "☁️",
+  "ks-ai-research": "🧪",
+  "ks-space-science": "🌍",
+  "ks-standards": "🔒",
+  "ks-cloud-sustainability": "🌱",
 };
 
 const predefinedQuestions = [
-  { text: "What were the key revenue figures in the 2023 annual report?", agent: "Financial" },
-  { text: "What does NASA's Earth at Night research reveal?", agent: "Scientific" },
-  { text: "What is SEC Regulation Best Interest?", agent: "Legal" },
-  { text: "How does Azure cloud architecture work for enterprise?", agent: "Technology" },
+  { text: "What is the Transformer architecture and how does attention work?", agent: "AI Research" },
+  { text: "What does NASA's Earth at Night research reveal about light pollution?", agent: "Space Science" },
+  { text: "What is the NIST Cybersecurity Framework?", agent: "Standards" },
+  { text: "How does Microsoft approach sustainability in cloud infrastructure?", agent: "Cloud" },
 ];
 
 function App() {
@@ -249,7 +249,7 @@ function App() {
     if (step === "idle") return "idle";
     if (nodeId === "input") return "active";
     if (nodeId === "orchestrator") return step === "routing" ? "active" : "done";
-    if (["financial", "scientific", "legal", "technology"].includes(nodeId)) {
+    if (["ai-research", "space-science", "standards", "cloud-sustainability"].includes(nodeId)) {
       return step === nodeId ? "active" : "idle";
     }
     if (nodeId === "complete") return step === "complete" ? "active" : "idle";
@@ -261,7 +261,7 @@ function App() {
       <header className="app-header">
         <div className="header-left">
           <h1>FoundryIQ Multi-Agent Demo</h1>
-          <span className="header-subtitle">Azure AI Foundry + Agent Framework</span>
+          <span className="header-subtitle">Azure AI Foundry + Agent Framework — Frontier Research &amp; Innovation</span>
         </div>
         <div className="header-right">
           <span className="status-indicator">
@@ -365,7 +365,7 @@ function App() {
             </div>
 
             <div className="specialist-nodes">
-              {(["financial", "scientific", "legal", "technology"] as const).map((id) => {
+              {(["ai-research", "space-science", "standards", "cloud-sustainability"] as const).map((id) => {
                 const agent = agents.find((a) => a.id === id)!;
                 return (
                   <div key={id} className={`workflow-node specialist-node ${getNodeStatus(id)}`}>
