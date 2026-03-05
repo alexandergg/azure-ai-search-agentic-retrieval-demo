@@ -4,7 +4,9 @@ FoundryIQ Multi-Agent Demo Backend
 FastAPI wrapper around the multi-agent orchestrator with FoundryIQ Knowledge Bases.
 """
 
+import logging
 import os
+import traceback
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
@@ -15,6 +17,8 @@ from pydantic import BaseModel
 
 # Load .env from project root
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
+
+logger = logging.getLogger(__name__)
 
 
 class ChatRequest(BaseModel):
@@ -38,6 +42,13 @@ class HealthResponse(BaseModel):
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     print("Starting FoundryIQ Multi-Agent Demo...")
+    # Validate agent imports at startup
+    try:
+        from agents.orchestrator import run_single_query  # noqa: F401
+        print("  ✓ Agent imports OK")
+    except Exception as e:
+        print(f"  ✗ Agent import error: {e}")
+        logger.error("Agent import failed:\n%s", traceback.format_exc())
     yield
     print("Shutting down...")
 
@@ -78,6 +89,7 @@ async def chat(request: ChatRequest):
             sources=sources,
         )
     except Exception as e:
+        logger.error("Error in /chat endpoint:\n%s", traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 
