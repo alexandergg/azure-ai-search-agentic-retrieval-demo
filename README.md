@@ -7,7 +7,11 @@ A multi-agent orchestration demo using **Microsoft Agent Framework SDK** and **A
 - **Multi-Agent Orchestration** -- Intelligent routing of queries to specialist agents (AI Research, Space Science, Standards, Cloud & Sustainability)
 - **Microsoft Agent Framework SDK** -- Built on the official agent-framework Python SDK with AzureAISearchContextProvider
 - **FoundryIQ Knowledge Bases** -- Agentic retrieval mode with LLM-powered query planning and semantic reranking
-- **React + FastAPI Web App** -- Interactive chat UI with workflow visualization and execution trace
+- **ChatGPT-Style Conversational UI** -- Centered chat interface with light theme, streaming responses (SSE), rich markdown rendering, and follow-up suggestions
+- **Retrieval Journey Visualization** -- Collapsible per-message timeline showing real KB pipeline data (query planning, search execution, reasoning, answer synthesis with token counts and timing)
+- **Inline Citations** -- Numbered clickable citations in responses with expandable source panel showing document details and reranker scores
+- **Streaming Responses** -- Server-Sent Events (SSE) for progressive text rendering with real-time typing effect
+- **Conversation Memory** -- Built-in AgentSession + InMemoryHistoryProvider for multi-turn context
 - **CLI Pipeline** -- Standalone scripts for document ingestion, KB setup, and single-agent chat
 - **RBAC-Only Auth** -- Uses DefaultAzureCredential for all Azure services
 - **azd Deployment** -- Infrastructure as Code with Bicep + Container Apps
@@ -115,11 +119,11 @@ bash scripts/05_cleanup.sh
 demo-foundry-iq/
 +-- app/
 |   +-- backend/
-|   |   +-- main.py                # FastAPI app (/chat, /health, /agents)
+|   |   +-- main.py                # FastAPI app (/chat, /chat/stream, /health, /agents)
 |   |   +-- requirements.txt       # Backend dependencies
 |   |   +-- Dockerfile             # Production container image
 |   |   +-- agents/
-|   |   |   +-- orchestrator.py    # Router + run_single_query()
+|   |   |   +-- orchestrator.py    # Router + run_single_query() + run_single_query_stream()
 |   |   |   +-- ai_research_agent.py    # AI Research specialist
 |   |   |   +-- space_science_agent.py  # Space Science specialist
 |   |   |   +-- standards_agent.py      # Standards specialist
@@ -129,9 +133,20 @@ demo-foundry-iq/
 |       +-- package.json           # React 18 + Vite + TypeScript
 |       +-- vite.config.ts         # Builds to ../backend/static
 |       +-- src/
-|           +-- App.tsx            # Chat UI with workflow visualization
+|           +-- App.tsx            # Root component with streaming state management
+|           +-- api.ts             # API client (REST + SSE streaming)
+|           +-- types.ts           # Shared TypeScript interfaces
 |           +-- main.tsx           # React entry point
-|           +-- index.css          # Dark theme styling
+|           +-- index.css          # Light ChatGPT-style theme
+|           +-- components/
+|               +-- ChatLayout.tsx       # Centered layout with header, messages, input
+|               +-- ChatMessage.tsx      # Message bubble with agent badge, citations, journey
+|               +-- ChatInput.tsx        # Auto-growing textarea with Enter/Shift+Enter
+|               +-- MarkdownRenderer.tsx # react-markdown with syntax highlighting + citation parsing
+|               +-- CitationPanel.tsx    # Collapsible source list with highlights
+|               +-- RetrievalJourney.tsx # KB pipeline timeline visualization
+|               +-- SuggestedQuestions.tsx # Follow-up question pill buttons
+|               +-- WelcomeScreen.tsx    # Empty-state with domain question cards
 +-- scripts/                       # CLI pipeline
 |   +-- 00_download_documents.sh
 |   +-- 01_deploy_infra.ps1
