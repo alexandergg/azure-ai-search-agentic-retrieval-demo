@@ -1,231 +1,199 @@
-# Azure AI Foundry IQ Demo
+# FoundryIQ Multi-Agent Demo
 
-A complete demo showcasing **Azure AI Foundry IQ** capabilities: Agentic Retrieval, Knowledge Bases, Knowledge Sources, and document ingestion with semantic chunking via Azure Content Understanding.
+A multi-agent orchestration demo using **Microsoft Agent Framework SDK** and **Azure AI Foundry** with **FoundryIQ Knowledge Bases** for grounded retrieval across 4 domains.
 
-## Overview
+## Features
 
-This demo implements an end-to-end Retrieval-Augmented Generation (RAG) pipeline using Azure AI Foundry IQ:
-
-1. **Ingest** PDF documents into Azure Blob Storage
-2. **Chunk** documents using Azure Content Understanding (layout analysis → Markdown → semantic chunking)
-3. **Index** chunks in Azure AI Search with vector embeddings
-4. **Create** a Knowledge Source and Knowledge Base for agentic retrieval
-5. **Deploy** a Foundry Agent connected to the knowledge base via Model Context Protocol (MCP)
-6. **Chat** interactively with the agent, which decomposes complex queries into parallel subqueries for high-quality answers with citations
+- **Multi-Agent Orchestration** -- Intelligent routing of queries to specialist agents (AI Research, Space Science, Standards, Cloud & Sustainability)
+- **Microsoft Agent Framework SDK** -- Built on the official gent-framework Python SDK with AzureAISearchContextProvider
+- **FoundryIQ Knowledge Bases** -- Agentic retrieval mode with LLM-powered query planning and semantic reranking
+- **React + FastAPI Web App** -- Interactive chat UI with workflow visualization and execution trace
+- **CLI Pipeline** -- Standalone scripts for document ingestion, KB setup, and single-agent chat
+- **RBAC-Only Auth** -- Uses DefaultAzureCredential for all Azure services
+- **azd Deployment** -- Infrastructure as Code with Bicep + Container Apps
 
 ## Architecture
 
-```
-┌──────────────┐     ┌──────────────────┐     ┌──────────────────────────┐
-│              │     │                  │     │  Azure Content           │
-│  PDF Docs    ├────►│  Blob Storage    ├────►│  Understanding           │
-│  (data/)     │     │  (documents)     │     │  (Layout → MD → Chunks)  │
-└──────────────┘     └──────────────────┘     └────────────┬─────────────┘
-                                                           │
-                                                           ▼
-┌──────────────┐     ┌──────────────────┐     ┌──────────────────────────┐
-│              │     │  Knowledge Base  │     │  Azure AI Search         │
-│  Foundry     │◄────┤  (Agentic        │◄────┤  (Vector Index +         │
-│  Agent       │ MCP │   Retrieval)     │     │   Semantic Reranking)    │
-└──────┬───────┘     └──────────────────┘     └──────────────────────────┘
-       │
-       ▼
-┌──────────────┐
-│  Interactive │
-│  CLI Chat    │
-└──────────────┘
-```
+`
+User Query
+    |
+    v
+ORCHESTRATOR AGENT (routes by intent)
+    |
+    +---> AI RESEARCH AGENT (ks-ai-research) -- transformer papers, BERT, GPT-4, ML research
+    +---> SPACE SCIENCE AGENT (ks-space-science) -- NASA pubs, earth observation, satellite imagery
+    +---> STANDARDS AGENT (ks-standards) -- NIST frameworks, cybersecurity, AI governance
+    +---> CLOUD & SUSTAINABILITY AGENT (ks-cloud-sustainability) -- Azure whitepapers, sustainability
+    |
+    v
+FOUNDRYIQ KNOWLEDGE BASE (demo-knowledge-base)
+  1 KB with 4 Knowledge Sources
+  LLM query planning routes subqueries to the most relevant source(s)
+  Hybrid search + semantic reranking
+`
 
 ## Prerequisites
 
-- **Azure subscription** with **Contributor** and **User Access Administrator** roles
-- **Azure CLI** (`az`) installed and authenticated (`az login`)
-- **Python 3.10+**
-- An Azure region that supports agentic retrieval (e.g., `eastus2`, `westeurope`, `swedencentral`, `australiaeast`)
+- **Azure subscription** with **Owner** or **Contributor + User Access Administrator** roles
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) installed and authenticated
+- [Azure Developer CLI (azd)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- **Python 3.11+**
+- **Node.js 22+** (for frontend)
+- An Azure region that supports agentic retrieval (e.g., astus2, westeurope, swedencentral)
 
 ## Quick Start
 
-### 1. Clone the repository
+### 1. Clone and set up
 
-```bash
-git clone https://github.com/alexandergg/azure-ai-search-agentic-retrieval-demo.git
-cd azure-ai-search-agentic-retrieval-demo
-```
+`ash
+git clone <repo-url>
+cd demo-foundry-iq
 
-### 2. Add PDF documents
+python -m venv .venv
+source .venv/bin/activate  # or .venv\\Scripts\\Activate on Windows
 
-Place your PDF files in the `data/sample-docs/` directory. These will be ingested, chunked, and indexed.
-
-```
-data/
-└── sample-docs/
-    ├── document1.pdf
-    ├── document2.pdf
-    └── ...
-```
-
-### 3. Deploy Azure infrastructure
-
-```powershell
-.\scripts\01_deploy_infra.ps1
-```
-
-This provisions all required Azure resources (AI Search, Storage, OpenAI, AI Services, Foundry project) and generates a `.env` file with the connection details.
-
-### 4. Install Python dependencies
-
-```bash
 pip install -r requirements.txt
-```
+pip install -r app/backend/requirements.txt
+`
 
-### 5. Upload documents to Blob Storage
+### 2. Deploy Azure infrastructure
 
-```bash
-python scripts/02_upload_documents.py
-```
+`powershell
+.\\scripts\\01_deploy_infra.ps1
+`
 
-Uploads all PDFs from `data/sample-docs/` to the Azure Blob Storage container.
+Or with azd:
 
-### 6. Create Knowledge Source and Knowledge Base
+`ash
+az login && azd auth login
+azd up
+`
 
-```bash
-# Default: standard mode (Content Understanding with OCR, layout analysis)
-python scripts/03_create_knowledge.py
+### 3. Set up Knowledge Base
 
-# For faster testing: minimal mode (built-in text extraction)
-python scripts/03_create_knowledge.py --mode minimal
+`ash
+# Download documents (Linux/Mac)
+bash scripts/00_download_documents.sh
 
-# With verbose SDK logging:
-python scripts/03_create_knowledge.py -v
-```
+# Download documents (Windows cross-platform)
+python scripts/00_download_documents.py
 
-Creates an Azure AI Search index with Content Understanding chunking, registers it as a Knowledge Source, and wraps it in a Knowledge Base with agentic retrieval features (LLM query planning, answer synthesis, retrieval instructions).
+# Upload and create knowledge base
+bash scripts/02_upload_documents.sh
+bash scripts/03_create_knowledge.sh
+`
 
-### 7. Chat with the agent
+### 4. Run the web app
 
-```bash
+`ash
+# Build frontend
+cd app/frontend && npm install && npm run build && cd ../..
+
+# Start backend
+cd app/backend
+uvicorn main:app --reload --port 8000
+`
+
+Open http://localhost:8000 in your browser.
+
+### 5. Or use the CLI agent
+
+`ash
 python scripts/04_create_agent.py
+`
 
-# With verbose MCP output (raw tool calls):
-python scripts/04_create_agent.py -v
-```
+### 6. Cleanup
 
-Creates a RemoteTool project connection for secure MCP authentication, then creates a Foundry Agent that uses `knowledge_base_retrieve` via MCP. Starts an interactive chat session with:
-
-- **Streaming responses** — answers are streamed token-by-token with live Markdown rendering
-- **Retrieval journey panel** — after each answer, shows query decomposition, subqueries, timing, token usage, and cited references
-- **Retry logic** — automatic exponential backoff for rate limit (429) errors
-
-### 8. Cleanup (optional)
-
-```bash
-# Clean up AI Search resources, blobs, and MCP connections
-python scripts/05_cleanup.py
-
-# Or delete the entire resource group
-az group delete --name rg-demo-foundry-iq --yes --no-wait
-```
-
-## How It Works
-
-### Document Ingestion
-
-Azure Content Understanding processes each PDF through a 3-phase pipeline:
-
-1. **Layout Analysis** — OCR and structural detection identify text, tables, headers, figures, and page boundaries
-2. **Markdown Conversion** — Detected elements are converted to Markdown preserving tables, headers, and figure references
-3. **Semantic Chunking** — Content is split into semantically coherent chunks that respect section boundaries, keep tables intact, and allow cross-page content to stay together. Overlapping context windows ensure no information is lost at chunk boundaries.
-
-### Agentic Retrieval
-
-Unlike simple vector search, agentic retrieval uses an LLM-powered query planner:
-
-1. **Query Decomposition** — The LLM analyzes the user's question and decomposes complex queries into multiple targeted subqueries
-2. **Parallel Subquery Execution** — Each subquery runs independently against the search index using hybrid search (keyword + vector + semantic reranking)
-3. **Result Aggregation** — Results from all subqueries are merged, deduplicated, and reranked for relevance
-4. **Unified Response** — The agent synthesizes a comprehensive answer with inline citations pointing back to source documents
-
-### MCP Integration
-
-The Foundry Agent connects to the Knowledge Base via [Model Context Protocol (MCP)](https://modelcontextprotocol.io/). The integration uses:
-
-1. **RemoteTool Project Connection** — A connection on the AI Foundry project with `ProjectManagedIdentity` auth type. This tells the Agent Service to acquire tokens for `https://search.azure.com/` using the project's managed identity.
-2. **MCP Tool** — The agent is configured with an MCP tool pointing to `{search_endpoint}/knowledgebases/{kb_name}/mcp?api-version=2025-11-01-preview`
-3. **`knowledge_base_retrieve`** — The allowed tool that the agent calls to perform agentic retrieval, which internally does LLM-powered query planning, parallel subquery execution, and semantic reranking.
-
-This architecture ensures secure, token-based authentication without exposing API keys — the project MI handles all auth transparently.
+`ash
+bash scripts/05_cleanup.sh
+# Or: az group delete --name rg-demo-foundry-iq --yes --no-wait
+`
 
 ## Project Structure
 
-```
+`
 demo-foundry-iq/
-├── .env.example              # Template for environment variables
-├── .gitignore
-├── requirements.txt           # Python dependencies
-├── README.md
-├── data/
-│   └── sample-docs/           # Place PDF documents here
-├── docs/
-│   └── architecture.md        # Detailed architecture documentation
-├── infra/
-│   └── modules/               # Bicep modules for Azure resources
-└── scripts/
-    ├── 01_deploy_infra.ps1    # Provisions Azure infrastructure
-    ├── 02_upload_documents.py # Uploads PDFs to Blob Storage
-    ├── 03_create_knowledge.py # Creates knowledge source + base
-    ├── 04_create_agent.py     # Creates agent with MCP tool and starts chat
-    ├── 05_cleanup.py          # Cleans up all resources
-    └── utils/
-        ├── __init__.py
-        └── config.py          # Shared configuration loader
-```
++-- app/
+|   +-- backend/
+|   |   +-- main.py                # FastAPI app (/chat, /health, /agents)
+|   |   +-- requirements.txt       # Backend dependencies
+|   |   +-- Dockerfile             # Production container image
+|   |   +-- agents/
+|   |   |   +-- orchestrator.py    # Router + run_single_query()
+|   |   |   +-- ai_research_agent.py    # AI Research specialist
+|   |   |   +-- space_science_agent.py  # Space Science specialist
+|   |   |   +-- standards_agent.py      # Standards specialist
+|   |   |   +-- cloud_sustainability_agent.py # Cloud & Sustainability specialist
+|   |   +-- static/                # Frontend build output
+|   +-- frontend/
+|       +-- package.json           # React 18 + Vite + TypeScript
+|       +-- vite.config.ts         # Builds to ../backend/static
+|       +-- src/
+|           +-- App.tsx            # Chat UI with workflow visualization
+|           +-- main.tsx           # React entry point
+|           +-- index.css          # Dark theme styling
++-- scripts/                       # CLI pipeline
+|   +-- 00_download_documents.sh
+|   +-- 01_deploy_infra.ps1
+|   +-- 02_upload_documents.sh
+|   +-- 03_create_knowledge.sh
+|   +-- 04_create_agent.py
+|   +-- 05_cleanup.sh
+|   +-- utils/config.py            # Python config (for 04_create_agent.py)
+|   +-- utils/config.sh            # Bash config (for .sh scripts)
++-- data/
+|   +-- catalog.json               # Document catalog (4 domains)
+|   +-- ai-research/ space-science/ standards/ cloud-sustainability/
++-- docs/
+|   +-- architecture.md            # Detailed architecture
+|   +-- deployment.md              # Deployment guide
+|   +-- MANUAL_STEPS.md            # Manual Azure setup steps
++-- infra/                         # Bicep IaC templates
++-- azure.yaml                     # azd configuration
++-- .devcontainer/                 # Dev container setup
++-- pyproject.toml                 # Project config + tool settings
++-- requirements.txt               # CLI script dependencies
++-- requirements-dev.txt           # Development dependencies
++-- AGENTS.md                      # Agent specification (Copilot)
+`
+
+## Knowledge Base Mapping
+
+| Agent | Knowledge Source | Content |
+|-------|----------------|---------|
+| AI Research | ks-ai-research | Transformer papers, BERT, GPT-4, ML research |
+| Space Science | ks-space-science | NASA publications, earth observation, satellite imagery |
+| Standards | ks-standards | NIST cybersecurity framework, AI risk management |
+| Cloud & Sustainability | ks-cloud-sustainability | Azure whitepapers, cloud architecture, sustainability |
+
+All 4 sources are combined into a single Knowledge Base (demo-knowledge-base) with LLM-powered query planning that routes subqueries to the most relevant source(s).
 
 ## Configuration
 
-All configuration is managed through a `.env` file. Copy `.env.example` to `.env` and fill in your values:
-
-```bash
-cp .env.example .env
-```
+All configuration is managed through a .env file. Copy .env.example to .env:
 
 | Variable | Description |
 |---|---|
-| `AZURE_SEARCH_ENDPOINT` | Azure AI Search service endpoint |
-| `PROJECT_ENDPOINT` | Azure AI Foundry project API endpoint |
-| `PROJECT_RESOURCE_ID` | Full ARM resource ID for the Foundry project |
-| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI service endpoint |
-| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | Embedding model deployment name (default: `text-embedding-3-large`) |
-| `AZURE_OPENAI_EMBEDDING_MODEL` | Embedding model name (default: `text-embedding-3-large`) |
-| `AZURE_OPENAI_GPT_DEPLOYMENT` | GPT model deployment name (default: `gpt-4o`) |
-| `AZURE_OPENAI_GPT_MINI_DEPLOYMENT` | GPT mini model deployment name (default: `gpt-4o-mini`) |
-| `AZURE_STORAGE_CONNECTION_STRING` | Blob Storage connection string |
-| `AZURE_STORAGE_CONTAINER_NAME` | Blob container name (default: `documents`) |
-| `AZURE_AI_SERVICES_ENDPOINT` | Azure AI Services endpoint for Content Understanding |
-| `AGENT_MODEL` | Model used by the Foundry Agent (default: `gpt-4o`) |
-| `KNOWLEDGE_SOURCE_NAME` | Name for the knowledge source (default: `demo-blob-ks`) |
-| `KNOWLEDGE_BASE_NAME` | Name for the knowledge base (default: `demo-knowledge-base`) |
+| AZURE_SEARCH_ENDPOINT | Azure AI Search service endpoint |
+| PROJECT_ENDPOINT | Azure AI Foundry project API endpoint |
+| PROJECT_RESOURCE_ID | Full ARM resource ID for the Foundry project |
+| AGENT_MODEL | Chat model (default: gpt-4o) |
+| KNOWLEDGE_BASE_NAME | KB name (default: demo-knowledge-base) |
+| AZURE_STORAGE_CONNECTION_STRING | Blob Storage connection string |
+| AZURE_AI_SERVICES_ENDPOINT | AI Services endpoint for Content Understanding |
 
-## Cleanup
+See .env.example for the full variable list.
 
-To clean up AI Search resources (KBs, KSs, indexers, indexes), blobs, and MCP connections:
+## Documentation
 
-```bash
-python scripts/05_cleanup.py
-```
-
-To delete all Azure resources entirely:
-
-```bash
-az group delete --name rg-demo-foundry-iq --yes --no-wait
-```
-
-> **Note:** This permanently deletes all resources in the resource group.
+- [Architecture](docs/architecture.md) -- Detailed system architecture
+- [Deployment Guide](docs/deployment.md) -- azd, Docker, and local deployment
+- [Manual Steps](docs/MANUAL_STEPS.md) -- Azure Portal setup and RBAC configuration
 
 ## Resources
 
-- [Azure AI Foundry IQ Documentation](https://learn.microsoft.com/azure/ai-services/agents/)
-- [Agentic Retrieval Overview](https://learn.microsoft.com/azure/ai-services/agents/concepts/agentic-retrieval)
+- [Azure AI Foundry IQ](https://learn.microsoft.com/azure/ai-services/agents/)
+- [Agentic Retrieval](https://learn.microsoft.com/azure/ai-services/agents/concepts/agentic-retrieval)
+- [Microsoft Agent Framework SDK](https://pypi.org/project/agent-framework-core/)
 - [Azure Content Understanding](https://learn.microsoft.com/azure/ai-services/content-understanding/)
-- [Azure AI Search Documentation](https://learn.microsoft.com/azure/search/)
 - [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)
-- [Azure OpenAI Service](https://learn.microsoft.com/azure/ai-services/openai/)
