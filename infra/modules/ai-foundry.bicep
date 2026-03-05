@@ -13,10 +13,10 @@ param storageAccountId string
 @description('Resource ID of the AI Search service.')
 param searchServiceId string
 
-@description('Resource ID of the Azure OpenAI account.')
+@description('Resource ID of the Azure AI Services account.')
 param openAiId string
 
-@description('Endpoint URL of the Azure OpenAI account.')
+@description('Endpoint URL of the Azure AI Services account.')
 param openAiEndpoint string
 
 @description('Endpoint URL of the AI Search service.')

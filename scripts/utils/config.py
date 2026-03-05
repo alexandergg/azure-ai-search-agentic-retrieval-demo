@@ -1,5 +1,6 @@
 """Shared configuration loader for the demo scripts."""
 
+import json
 import os
 import sys
 
@@ -19,7 +20,7 @@ def load_config() -> dict:
         "AZURE_SEARCH_ENDPOINT",
         "PROJECT_ENDPOINT",
         "PROJECT_RESOURCE_ID",
-        "AZURE_OPENAI_ENDPOINT",
+        "AZURE_AI_SERVICES_ENDPOINT",
     ]
 
     config = {}
@@ -76,3 +77,18 @@ def load_config() -> dict:
     )
 
     return config
+
+
+def load_catalog() -> dict:
+    """Load the document catalog from data/catalog.json."""
+    catalog_path = os.path.join(
+        os.path.dirname(__file__), "..", "..", "data", "catalog.json"
+    )
+    catalog_path = os.path.normpath(catalog_path)
+
+    if not os.path.exists(catalog_path):
+        print(f"Error: Catalog not found at {catalog_path}")
+        sys.exit(1)
+
+    with open(catalog_path, "r", encoding="utf-8") as f:
+        return json.load(f)

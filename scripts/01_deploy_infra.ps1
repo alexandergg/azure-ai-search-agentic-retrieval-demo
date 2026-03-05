@@ -116,7 +116,6 @@ Write-Step "Extracting deployment outputs"
 
 # Query each output individually, suppressing stderr to avoid AutoRun noise
 $searchEndpoint          = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.searchEndpoint.value -o tsv 2>$null)".Trim()
-$openAiEndpoint          = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.openAiEndpoint.value -o tsv 2>$null)".Trim()
 $storageConnectionString = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.storageConnectionString.value -o tsv 2>$null)".Trim()
 $projectEndpoint         = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.projectEndpoint.value -o tsv 2>$null)".Trim()
 $projectResourceId       = "$(az deployment group show --resource-group $ResourceGroupName --name main --query properties.outputs.projectResourceId.value -o tsv 2>$null)".Trim()
@@ -145,8 +144,7 @@ PROJECT_RESOURCE_ID=$projectResourceId
 FOUNDRY_PROJECT_ENDPOINT=$foundryProjectEndpoint
 FOUNDRY_PROJECT_RESOURCE_ID=$foundryProjectResourceId
 
-# Azure OpenAI
-AZURE_OPENAI_ENDPOINT=$openAiEndpoint
+# Azure OpenAI model deployments (on AI Services account)
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
 AZURE_OPENAI_EMBEDDING_MODEL=text-embedding-3-large
 AZURE_OPENAI_GPT_DEPLOYMENT=gpt-4o
@@ -303,15 +301,14 @@ Write-Host ""
 Write-Host "  Resource Group:        $ResourceGroupName" -ForegroundColor White
 Write-Host "  Location:              $Location" -ForegroundColor White
 Write-Host "  Search Endpoint:       $searchEndpoint" -ForegroundColor White
-Write-Host "  OpenAI Endpoint:       $openAiEndpoint" -ForegroundColor White
 Write-Host "  AI Services Endpoint:  $aiServicesEndpoint" -ForegroundColor White
 Write-Host "  Foundry Project:       $foundryProjectEndpoint" -ForegroundColor White
 Write-Host "  .env File:             $EnvFilePath" -ForegroundColor White
 Write-Host ""
 Write-Host "  Next steps:" -ForegroundColor Yellow
 Write-Host "    1. pip install -r requirements.txt" -ForegroundColor White
-Write-Host "    2. python scripts\02_upload_documents.py" -ForegroundColor White
-Write-Host "    3. python scripts\03_create_knowledge.py" -ForegroundColor White
+Write-Host "    2. bash scripts\02_upload_documents.sh" -ForegroundColor White
+Write-Host "    3. bash scripts\03_create_knowledge.sh" -ForegroundColor White
 Write-Host "    4. python scripts\04_create_agent.py" -ForegroundColor White
 Write-Host ""
 Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan

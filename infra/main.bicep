@@ -37,16 +37,7 @@ module aiSearch 'modules/ai-search.bicep' = {
   }
 }
 
-// ── Azure OpenAI ──
-module openAi 'modules/openai.bicep' = {
-  name: '${namePrefix}-openai'
-  params: {
-    location: location
-    namePrefix: namePrefix
-  }
-}
-
-// ── Azure AI Services (Content Understanding) ──
+// ── Azure AI Services (hosts all model deployments + Foundry project) ──
 module aiServices 'modules/ai-services.bicep' = {
   name: '${namePrefix}-aiservices'
   params: {
@@ -66,17 +57,6 @@ resource searchToAiServicesRole 'Microsoft.Authorization/roleAssignments@2022-04
   }
 }
 
-// ── RBAC: AI Search → OpenAI (Cognitive Services OpenAI User for embeddings) ──
-resource searchToOpenAiRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(resourceGroup().id, namePrefix, 'search-openai-coguser')
-  scope: resourceGroup()
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd') // Cognitive Services OpenAI User
-    principalId: aiSearch.outputs.searchPrincipalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
 // ── AI Foundry (Hub + Project) ──
 module aiFoundry 'modules/ai-foundry.bicep' = {
   name: '${namePrefix}-ai-foundry'
@@ -86,8 +66,8 @@ module aiFoundry 'modules/ai-foundry.bicep' = {
     keyVaultId: keyVault.outputs.keyVaultId
     storageAccountId: storage.outputs.storageAccountId
     searchServiceId: aiSearch.outputs.searchServiceId
-    openAiId: openAi.outputs.openAiId
-    openAiEndpoint: openAi.outputs.openAiEndpoint
+    openAiId: aiServices.outputs.aiServicesId
+    openAiEndpoint: aiServices.outputs.aiServicesEndpoint
     searchEndpoint: aiSearch.outputs.searchEndpoint
   }
 }
@@ -114,6 +94,26 @@ resource foundryProjectToSearchContrib 'Microsoft.Authorization/roleAssignments@
   }
 }
 
+// ── Container Registry ──
+module containerRegistry 'modules/container-registry.bicep' = {
+  name: '${namePrefix}-acr'
+  params: {
+    location: location
+    namePrefix: namePrefix
+  }
+}
+
+// ── Container Apps ──
+module containerApps 'modules/container-apps.bicep' = {
+  name: '${namePrefix}-container-apps'
+  params: {
+    location: location
+    namePrefix: namePrefix
+    acrLoginServer: containerRegistry.outputs.acrLoginServer
+    acrName: containerRegistry.outputs.acrName
+  }
+}
+
 // ── Outputs ──
 output storageAccountName string = storage.outputs.storageAccountName
 output storageConnectionString string = storage.outputs.connectionString
@@ -121,8 +121,6 @@ output keyVaultName string = keyVault.outputs.keyVaultName
 output keyVaultUri string = keyVault.outputs.keyVaultUri
 output searchServiceName string = aiSearch.outputs.searchServiceName
 output searchEndpoint string = aiSearch.outputs.searchEndpoint
-output openAiName string = openAi.outputs.openAiName
-output openAiEndpoint string = openAi.outputs.openAiEndpoint
 output hubName string = aiFoundry.outputs.hubName
 output projectName string = aiFoundry.outputs.projectName
 output projectResourceId string = aiFoundry.outputs.projectId
@@ -132,3 +130,6 @@ output aiServicesEndpoint string = aiServices.outputs.aiServicesEndpoint
 output foundryProjectName string = aiServices.outputs.foundryProjectName
 output foundryProjectEndpoint string = aiServices.outputs.foundryProjectEndpoint
 output foundryProjectResourceId string = aiServices.outputs.foundryProjectResourceId
+output acrName string = containerRegistry.outputs.acrName
+output acrLoginServer string = containerRegistry.outputs.acrLoginServer
+output containerAppsUrl string = containerApps.outputs.appUrl

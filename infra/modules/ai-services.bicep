@@ -42,6 +42,42 @@ resource gpt4oDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-
   }
 }
 
+// ── Embedding deployment (required by Knowledge Sources + Memory Store) ──
+resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-04-01-preview' = {
+  parent: aiServices
+  name: 'text-embedding-3-large'
+  sku: {
+    name: 'Standard'
+    capacity: 120
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: 'text-embedding-3-large'
+      version: '1'
+    }
+  }
+  dependsOn: [gpt4oDeployment]
+}
+
+// ── GPT-4o-mini deployment (for Knowledge Base query planning + content understanding) ──
+resource gpt4oMiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-04-01-preview' = {
+  parent: aiServices
+  name: 'gpt-4o-mini'
+  sku: {
+    name: 'GlobalStandard'
+    capacity: 30
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: 'gpt-4o-mini'
+      version: '2024-07-18'
+    }
+  }
+  dependsOn: [embeddingDeployment]
+}
+
 // ── Foundry Project (CognitiveServices-based, for AIProjectClient + MCP) ──
 resource foundryProject 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-preview' = {
   parent: aiServices
@@ -51,7 +87,7 @@ resource foundryProject 'Microsoft.CognitiveServices/accounts/projects@2025-04-0
     type: 'SystemAssigned'
   }
   properties: {}
-  dependsOn: [gpt4oDeployment]
+  dependsOn: [gpt4oDeployment, embeddingDeployment, gpt4oMiniDeployment]
 }
 
 output aiServicesName string = aiServices.name

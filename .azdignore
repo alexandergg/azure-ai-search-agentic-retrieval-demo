@@ -1,0 +1,18 @@
+# Exclude from azd deployment
+__pycache__/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+tests/
+docs/
+data/
+scripts/
+*.md
+.devcontainer/
+.github/
+node_modules/
+app/frontend/
+infra/
+*.tfstate
+*.tfstate.backup
