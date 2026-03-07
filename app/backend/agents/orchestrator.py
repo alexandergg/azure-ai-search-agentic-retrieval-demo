@@ -12,8 +12,11 @@ import asyncio
 import logging
 import os
 import re
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 from azure.identity.aio import DefaultAzureCredential
+from azure.storage.blob import BlobSasPermissions, generate_blob_sas
 from agent_framework import Agent, Message, AgentSession, InMemoryHistoryProvider
 from agent_framework.azure import AzureOpenAIChatClient, AzureAISearchContextProvider
 
@@ -24,6 +27,15 @@ SEARCH_ENDPOINT = os.getenv("AZURE_SEARCH_ENDPOINT", "")
 AI_SERVICES_ENDPOINT = os.getenv("AZURE_AI_SERVICES_ENDPOINT", "")
 MODEL = os.getenv("AGENT_MODEL", "gpt-4o")
 KB_NAME = os.getenv("KNOWLEDGE_BASE_NAME", "demo-knowledge-base")
+
+# Parse storage connection string for SAS URL generation
+_STORAGE_CONN_STR = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
+_STORAGE_ACCOUNT_NAME = ""
+_STORAGE_ACCOUNT_KEY = ""
+if _STORAGE_CONN_STR:
+    _parts = dict(part.split("=", 1) for part in _STORAGE_CONN_STR.split(";") if "=" in part)
+    _STORAGE_ACCOUNT_NAME = _parts.get("AccountName", "")
+    _STORAGE_ACCOUNT_KEY = _parts.get("AccountKey", "")
 
 # Agent instructions
 from .ai_research_agent import AI_RESEARCH_INSTRUCTIONS
@@ -71,6 +83,30 @@ def _get_search_query(act: dict) -> str:
         if args and "search" in args:
             return args["search"]
     return "—"
+
+
+def _generate_blob_sas_url(kb_label: str, filepath: str) -> str | None:
+    """Generate a read-only SAS URL for a blob document (1-hour expiry)."""
+    if not _STORAGE_ACCOUNT_NAME or not _STORAGE_ACCOUNT_KEY or not filepath:
+        return None
+    filename = filepath.rsplit("/", 1)[-1]
+    # Skip non-file values (e.g. bare kb labels used as fallback)
+    if "." not in filename:
+        return None
+    container_name = kb_label.replace("ks-", "documents-", 1)
+    try:
+        sas_token = generate_blob_sas(
+            account_name=_STORAGE_ACCOUNT_NAME,
+            container_name=container_name,
+            blob_name=filename,
+            account_key=_STORAGE_ACCOUNT_KEY,
+            permission=BlobSasPermissions(read=True),
+            expiry=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+        return f"https://{_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/{container_name}/{filename}?{sas_token}"
+    except Exception as e:
+        logger.warning("Failed to generate SAS URL for %s/%s: %s", kb_label, filepath, e)
+        return None
 
 
 async def _retrieve_journey(credential, query: str, route: str) -> dict | None:
@@ -380,6 +416,13 @@ async def run_single_query(query: str, session_id: str | None = None) -> tuple[s
         if not sources:
             sources = [{"kb": kb_label, "title": "Knowledge Base", "filepath": kb_label}]
 
+        # Generate blob SAS URLs for citations missing a url
+        for src in sources:
+            if not src.get("url") and src.get("filepath"):
+                sas_url = _generate_blob_sas_url(kb_label, src["filepath"])
+                if sas_url:
+                    src["url"] = sas_url
+
         return route, clean_text, sources, suggested_questions, journey
 
     await credential.close()
@@ -507,6 +550,13 @@ async def run_single_query_stream(query: str, session_id: str | None = None):
 
         if not sources:
             sources = [{"kb": kb_label, "title": "Knowledge Base", "filepath": kb_label}]
+
+        # Generate blob SAS URLs for citations missing a url
+        for src in sources:
+            if not src.get("url") and src.get("filepath"):
+                sas_url = _generate_blob_sas_url(kb_label, src["filepath"])
+                if sas_url:
+                    src["url"] = sas_url
 
         # Wait for retrieval journey
         journey = await journey_task

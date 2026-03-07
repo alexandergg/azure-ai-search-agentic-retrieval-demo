@@ -2,21 +2,39 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
+import type { SourceInfo } from "../types";
 
 interface MarkdownRendererProps {
   content: string;
   onCitationClick?: (index: number) => void;
+  sources?: SourceInfo[];
 }
 
 function processContentWithCitations(
   content: string,
   onCitationClick?: (index: number) => void,
+  sources?: SourceInfo[],
 ): React.ReactNode[] {
   const parts = content.split(/(\[\d+\])/g);
   return parts.map((part, i) => {
     const match = part.match(/^\[(\d+)\]$/);
     if (match) {
       const idx = parseInt(match[1], 10);
+      const sourceUrl = sources && sources[idx - 1]?.url;
+      if (sourceUrl) {
+        return (
+          <a
+            key={i}
+            className="citation-ref"
+            href={sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={sources[idx - 1]?.title || `Source ${idx}`}
+          >
+            {idx}
+          </a>
+        );
+      }
       return (
         <span
           key={i}
@@ -68,13 +86,13 @@ function processContentWithCitations(
   });
 }
 
-export default function MarkdownRenderer({ content, onCitationClick }: MarkdownRendererProps) {
+export default function MarkdownRenderer({ content, onCitationClick, sources }: MarkdownRendererProps) {
   const hasCitations = /\[\d+\]/.test(content);
 
   if (hasCitations) {
     return (
       <div className="markdown-content">
-        {processContentWithCitations(content, onCitationClick)}
+        {processContentWithCitations(content, onCitationClick, sources)}
       </div>
     );
   }

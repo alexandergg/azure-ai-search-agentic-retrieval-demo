@@ -58,7 +58,7 @@ export default function ChatMessage({ message, isLast, onSuggestedQuestion }: Ch
         </div>
       )}
       <div className="message-content">
-        <MarkdownRenderer content={message.content} onCitationClick={handleCitationClick} />
+        <MarkdownRenderer content={message.content} onCitationClick={handleCitationClick} sources={message.sources} />
       </div>
 
       {message.sources && message.sources.length > 0 && (
